@@ -1,0 +1,61 @@
+{
+  "": {
+    "swift-dependencies": "/Users/jpurnell/Dropbox/Computer/Development/Swift/Playgrounds/Math/SwiftZIP/.build/arm64-apple-macosx/debug/SwiftZIP.build/primary.swiftdeps"
+  },
+  "/Users/jpurnell/Dropbox/Computer/Development/Swift/Playgrounds/Math/SwiftZIP/Sources/SwiftZIP/CRC32.swift": {
+    "dependencies": "/Users/jpurnell/Dropbox/Computer/Development/Swift/Playgrounds/Math/SwiftZIP/.build/arm64-apple-macosx/debug/SwiftZIP.build/CRC32.d",
+    "object": "/Users/jpurnell/Dropbox/Computer/Development/Swift/Playgrounds/Math/SwiftZIP/.build/arm64-apple-macosx/debug/SwiftZIP.build/CRC32.swift.o",
+    "swiftmodule": "/Users/jpurnell/Dropbox/Computer/Development/Swift/Playgrounds/Math/SwiftZIP/.build/arm64-apple-macosx/debug/SwiftZIP.build/CRC32~partial.swiftmodule",
+    "swift-dependencies": "/Users/jpurnell/Dropbox/Computer/Development/Swift/Playgrounds/Math/SwiftZIP/.build/arm64-apple-macosx/debug/SwiftZIP.build/CRC32.swiftdeps",
+    "diagnostics": "/Users/jpurnell/Dropbox/Computer/Development/Swift/Playgrounds/Math/SwiftZIP/.build/arm64-apple-macosx/debug/SwiftZIP.build/CRC32.dia"
+  },
+  "/Users/jpurnell/Dropbox/Computer/Development/Swift/Playgrounds/Math/SwiftZIP/Sources/SwiftZIP/CompressionMethod.swift": {
+    "dependencies": "/Users/jpurnell/Dropbox/Computer/Development/Swift/Playgrounds/Math/SwiftZIP/.build/arm64-apple-macosx/debug/SwiftZIP.build/CompressionMethod.d",
+    "object": "/Users/jpurnell/Dropbox/Computer/Development/Swift/Playgrounds/Math/SwiftZIP/.build/arm64-apple-macosx/debug/SwiftZIP.build/CompressionMethod.swift.o",
+    "swiftmodule": "/Users/jpurnell/Dropbox/Computer/Development/Swift/Playgrounds/Math/SwiftZIP/.build/arm64-apple-macosx/debug/SwiftZIP.build/CompressionMethod~partial.swiftmodule",
+    "swift-dependencies": "/Users/jpurnell/Dropbox/Computer/Development/Swift/Playgrounds/Math/SwiftZIP/.build/arm64-apple-macosx/debug/SwiftZIP.build/CompressionMethod.swiftdeps",
+    "diagnostics": "/Users/jpurnell/Dropbox/Computer/Development/Swift/Playgrounds/Math/SwiftZIP/.build/arm64-apple-macosx/debug/SwiftZIP.build/CompressionMethod.dia"
+  },
+  "/Users/jpurnell/Dropbox/Computer/Development/Swift/Playgrounds/Math/SwiftZIP/Sources/SwiftZIP/DataHelpers.swift": {
+    "dependencies": "/Users/jpurnell/Dropbox/Computer/Development/Swift/Playgrounds/Math/SwiftZIP/.build/arm64-apple-macosx/debug/SwiftZIP.build/DataHelpers.d",
+    "object": "/Users/jpurnell/Dropbox/Computer/Development/Swift/Playgrounds/Math/SwiftZIP/.build/arm64-apple-macosx/debug/SwiftZIP.build/DataHelpers.swift.o",
+    "swiftmodule": "/Users/jpurnell/Dropbox/Computer/Development/Swift/Playgrounds/Math/SwiftZIP/.build/arm64-apple-macosx/debug/SwiftZIP.build/DataHelpers~partial.swiftmodule",
+    "swift-dependencies": "/Users/jpurnell/Dropbox/Computer/Development/Swift/Playgrounds/Math/SwiftZIP/.build/arm64-apple-macosx/debug/SwiftZIP.build/DataHelpers.swiftdeps",
+    "diagnostics": "/Users/jpurnell/Dropbox/Computer/Development/Swift/Playgrounds/Math/SwiftZIP/.build/arm64-apple-macosx/debug/SwiftZIP.build/DataHelpers.dia"
+  },
+  "/Users/jpurnell/Dropbox/Computer/Development/Swift/Playgrounds/Math/SwiftZIP/Sources/SwiftZIP/Deflate.swift": {
+    "dependencies": "/Users/jpurnell/Dropbox/Computer/Development/Swift/Playgrounds/Math/SwiftZIP/.build/arm64-apple-macosx/debug/SwiftZIP.build/Deflate.d",
+    "object": "/Users/jpurnell/Dropbox/Computer/Development/Swift/Playgrounds/Math/SwiftZIP/.build/arm64-apple-macosx/debug/SwiftZIP.build/Deflate.swift.o",
+    "swiftmodule": "/Users/jpurnell/Dropbox/Computer/Development/Swift/Playgrounds/Math/SwiftZIP/.build/arm64-apple-macosx/debug/SwiftZIP.build/Deflate~partial.swiftmodule",
+    "swift-dependencies": "/Users/jpurnell/Dropbox/Computer/Development/Swift/Playgrounds/Math/SwiftZIP/.build/arm64-apple-macosx/debug/SwiftZIP.build/Deflate.swiftdeps",
+    "diagnostics": "/Users/jpurnell/Dropbox/Computer/Development/Swift/Playgrounds/Math/SwiftZIP/.build/arm64-apple-macosx/debug/SwiftZIP.build/Deflate.dia"
+  },
+  "/Users/jpurnell/Dropbox/Computer/Development/Swift/Playgrounds/Math/SwiftZIP/Sources/SwiftZIP/ZIPEntry.swift": {
+    "dependencies": "/Users/jpurnell/Dropbox/Computer/Development/Swift/Playgrounds/Math/SwiftZIP/.build/arm64-apple-macosx/debug/SwiftZIP.build/ZIPEntry.d",
+    "object": "/Users/jpurnell/Dropbox/Computer/Development/Swift/Playgrounds/Math/SwiftZIP/.build/arm64-apple-macosx/debug/SwiftZIP.build/ZIPEntry.swift.o",
+    "swiftmodule": "/Users/jpurnell/Dropbox/Computer/Development/Swift/Playgrounds/Math/SwiftZIP/.build/arm64-apple-macosx/debug/SwiftZIP.build/ZIPEntry~partial.swiftmodule",
+    "swift-dependencies": "/Users/jpurnell/Dropbox/Computer/Development/Swift/Playgrounds/Math/SwiftZIP/.build/arm64-apple-macosx/debug/SwiftZIP.build/ZIPEntry.swiftdeps",
+    "diagnostics": "/Users/jpurnell/Dropbox/Computer/Development/Swift/Playgrounds/Math/SwiftZIP/.build/arm64-apple-macosx/debug/SwiftZIP.build/ZIPEntry.dia"
+  },
+  "/Users/jpurnell/Dropbox/Computer/Development/Swift/Playgrounds/Math/SwiftZIP/Sources/SwiftZIP/ZIPError.swift": {
+    "dependencies": "/Users/jpurnell/Dropbox/Computer/Development/Swift/Playgrounds/Math/SwiftZIP/.build/arm64-apple-macosx/debug/SwiftZIP.build/ZIPError.d",
+    "object": "/Users/jpurnell/Dropbox/Computer/Development/Swift/Playgrounds/Math/SwiftZIP/.build/arm64-apple-macosx/debug/SwiftZIP.build/ZIPError.swift.o",
+    "swiftmodule": "/Users/jpurnell/Dropbox/Computer/Development/Swift/Playgrounds/Math/SwiftZIP/.build/arm64-apple-macosx/debug/SwiftZIP.build/ZIPError~partial.swiftmodule",
+    "swift-dependencies": "/Users/jpurnell/Dropbox/Computer/Development/Swift/Playgrounds/Math/SwiftZIP/.build/arm64-apple-macosx/debug/SwiftZIP.build/ZIPError.swiftdeps",
+    "diagnostics": "/Users/jpurnell/Dropbox/Computer/Development/Swift/Playgrounds/Math/SwiftZIP/.build/arm64-apple-macosx/debug/SwiftZIP.build/ZIPError.dia"
+  },
+  "/Users/jpurnell/Dropbox/Computer/Development/Swift/Playgrounds/Math/SwiftZIP/Sources/SwiftZIP/ZIPReader.swift": {
+    "dependencies": "/Users/jpurnell/Dropbox/Computer/Development/Swift/Playgrounds/Math/SwiftZIP/.build/arm64-apple-macosx/debug/SwiftZIP.build/ZIPReader.d",
+    "object": "/Users/jpurnell/Dropbox/Computer/Development/Swift/Playgrounds/Math/SwiftZIP/.build/arm64-apple-macosx/debug/SwiftZIP.build/ZIPReader.swift.o",
+    "swiftmodule": "/Users/jpurnell/Dropbox/Computer/Development/Swift/Playgrounds/Math/SwiftZIP/.build/arm64-apple-macosx/debug/SwiftZIP.build/ZIPReader~partial.swiftmodule",
+    "swift-dependencies": "/Users/jpurnell/Dropbox/Computer/Development/Swift/Playgrounds/Math/SwiftZIP/.build/arm64-apple-macosx/debug/SwiftZIP.build/ZIPReader.swiftdeps",
+    "diagnostics": "/Users/jpurnell/Dropbox/Computer/Development/Swift/Playgrounds/Math/SwiftZIP/.build/arm64-apple-macosx/debug/SwiftZIP.build/ZIPReader.dia"
+  },
+  "/Users/jpurnell/Dropbox/Computer/Development/Swift/Playgrounds/Math/SwiftZIP/Sources/SwiftZIP/ZIPWriter.swift": {
+    "dependencies": "/Users/jpurnell/Dropbox/Computer/Development/Swift/Playgrounds/Math/SwiftZIP/.build/arm64-apple-macosx/debug/SwiftZIP.build/ZIPWriter.d",
+    "object": "/Users/jpurnell/Dropbox/Computer/Development/Swift/Playgrounds/Math/SwiftZIP/.build/arm64-apple-macosx/debug/SwiftZIP.build/ZIPWriter.swift.o",
+    "swiftmodule": "/Users/jpurnell/Dropbox/Computer/Development/Swift/Playgrounds/Math/SwiftZIP/.build/arm64-apple-macosx/debug/SwiftZIP.build/ZIPWriter~partial.swiftmodule",
+    "swift-dependencies": "/Users/jpurnell/Dropbox/Computer/Development/Swift/Playgrounds/Math/SwiftZIP/.build/arm64-apple-macosx/debug/SwiftZIP.build/ZIPWriter.swiftdeps",
+    "diagnostics": "/Users/jpurnell/Dropbox/Computer/Development/Swift/Playgrounds/Math/SwiftZIP/.build/arm64-apple-macosx/debug/SwiftZIP.build/ZIPWriter.dia"
+  }
+}

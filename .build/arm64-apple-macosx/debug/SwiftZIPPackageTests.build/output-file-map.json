@@ -1,0 +1,12 @@
+{
+  "": {
+    "swift-dependencies": "/Users/jpurnell/Dropbox/Computer/Development/Swift/Playgrounds/Math/SwiftZIP/.build/arm64-apple-macosx/debug/SwiftZIPPackageTests.build/primary.swiftdeps"
+  },
+  "/Users/jpurnell/Dropbox/Computer/Development/Swift/Playgrounds/Math/SwiftZIP/.build/arm64-apple-macosx/debug/SwiftZIPPackageTests.derived/runner.swift": {
+    "dependencies": "/Users/jpurnell/Dropbox/Computer/Development/Swift/Playgrounds/Math/SwiftZIP/.build/arm64-apple-macosx/debug/SwiftZIPPackageTests.build/runner.d",
+    "object": "/Users/jpurnell/Dropbox/Computer/Development/Swift/Playgrounds/Math/SwiftZIP/.build/arm64-apple-macosx/debug/SwiftZIPPackageTests.build/runner.swift.o",
+    "swiftmodule": "/Users/jpurnell/Dropbox/Computer/Development/Swift/Playgrounds/Math/SwiftZIP/.build/arm64-apple-macosx/debug/SwiftZIPPackageTests.build/runner~partial.swiftmodule",
+    "swift-dependencies": "/Users/jpurnell/Dropbox/Computer/Development/Swift/Playgrounds/Math/SwiftZIP/.build/arm64-apple-macosx/debug/SwiftZIPPackageTests.build/runner.swiftdeps",
+    "diagnostics": "/Users/jpurnell/Dropbox/Computer/Development/Swift/Playgrounds/Math/SwiftZIP/.build/arm64-apple-macosx/debug/SwiftZIPPackageTests.build/runner.dia"
+  }
+}
