@@ -12,6 +12,8 @@ public struct ZIPEntry: Sendable, Equatable {
     public let modificationDate: Date?
     /// Unix file permissions (e.g., `0o644`), or `nil` if not set.
     public let unixPermissions: UInt16?
+    /// The compression level to use when writing with Deflate.
+    public let compressionLevel: CompressionLevel?
 
     /// Creates a new ZIP entry.
     /// - Parameters:
@@ -23,18 +25,22 @@ public struct ZIPEntry: Sendable, Equatable {
     ///   - unixPermissions: Unix permission bits (e.g., `0o755`). Defaults
     ///     to `nil`, which causes the writer to use `0o644` for files
     ///     and `0o755` for directories.
+    ///   - compressionLevel: The Deflate compression level. Defaults to `nil`,
+    ///     which uses the Apple Compression framework's default (level 5).
     public init(
         path: String,
         data: Data,
         method: CompressionMethod = .stored,
         modificationDate: Date? = nil,
-        unixPermissions: UInt16? = nil
+        unixPermissions: UInt16? = nil,
+        compressionLevel: CompressionLevel? = nil
     ) {
         self.path = path
         self.data = data
         self.method = method
         self.modificationDate = modificationDate
         self.unixPermissions = unixPermissions
+        self.compressionLevel = compressionLevel
     }
 
     /// Whether this entry represents a directory.

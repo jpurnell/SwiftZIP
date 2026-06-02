@@ -125,7 +125,7 @@ public enum ZIPWriter: Sendable {
                     method = .stored
                     compressedSize64 = 0
                 } else {
-                    let compressed = try Deflate.compress(entry.data)
+                    let compressed = try Deflate.compress(entry.data, level: entry.compressionLevel)
                     if compressed.count < entry.data.count {
                         fileData = compressed
                         method = .deflated

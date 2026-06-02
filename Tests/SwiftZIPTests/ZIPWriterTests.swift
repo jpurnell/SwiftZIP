@@ -460,6 +460,76 @@ struct ZIPWriterTests {
         _ = entry // suppress unused warning
     }
 
+    // MARK: - Compression Levels (Phase 1A)
+
+    @Test("Level 9 produces smaller output than level 1 for compressible data")
+    func level9SmallerThanLevel1() throws {
+        let xml = String(repeating: "<row><cell>data</cell></row>\n", count: 200)
+        let data = Data(xml.utf8)
+
+        let fast = ZIPEntry(path: "fast.xml", data: data, method: .deflated, compressionLevel: .fastest)
+        let best = ZIPEntry(path: "best.xml", data: data, method: .deflated, compressionLevel: .best)
+
+        let fastArchive = try ZIPWriter.write(entries: [fast])
+        let bestArchive = try ZIPWriter.write(entries: [best])
+
+        #expect(bestArchive.count < fastArchive.count)
+    }
+
+    @Test("All compression levels round-trip correctly")
+    func allLevelsRoundTrip() throws {
+        let content = String(repeating: "The quick brown fox jumps. ", count: 100)
+        let data = Data(content.utf8)
+        let levels: [CompressionLevel] = [.fastest, .fast, .normal, .best]
+
+        for level in levels {
+            let entry = ZIPEntry(
+                path: "level\(level.rawValue).txt",
+                data: data,
+                method: .deflated,
+                compressionLevel: level
+            )
+            let archive = try ZIPWriter.write(entries: [entry])
+            let result = try ZIPReader.read(from: archive)
+
+            #expect(result.count == 1)
+            #expect(result[0].data == data)
+        }
+    }
+
+    @Test("Default level (nil) uses Compression framework and round-trips")
+    func defaultLevelRoundTrip() throws {
+        let content = String(repeating: "default level test ", count: 100)
+        let data = Data(content.utf8)
+
+        let entry = ZIPEntry(path: "default.txt", data: data, method: .deflated)
+        #expect(entry.compressionLevel == nil)
+
+        let archive = try ZIPWriter.write(entries: [entry])
+        let result = try ZIPReader.read(from: archive)
+
+        #expect(result.count == 1)
+        #expect(result[0].data == data)
+    }
+
+    @Test("Explicit level 1 produces larger output than level 9")
+    func explicitLevelDiffersFromBest() throws {
+        // Use highly compressible data where level difference is measurable
+        var content = ""
+        for i in 0..<1000 {
+            content += "<row id=\"\(i)\"><cell>value \(i)</cell><cell>data \(i)</cell></row>\n"
+        }
+        let data = Data(content.utf8)
+
+        let fastEntry = ZIPEntry(path: "f.xml", data: data, method: .deflated, compressionLevel: .fastest)
+        let bestEntry = ZIPEntry(path: "b.xml", data: data, method: .deflated, compressionLevel: .best)
+
+        let fastArchive = try ZIPWriter.write(entries: [fastEntry])
+        let bestArchive = try ZIPWriter.write(entries: [bestEntry])
+
+        #expect(bestArchive.count < fastArchive.count)
+    }
+
     // MARK: - Structure Validation
 
     @Test("Archive contains all three record types in order")

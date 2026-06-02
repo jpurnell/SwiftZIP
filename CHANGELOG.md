@@ -5,13 +5,17 @@ All notable changes to SwiftZIP will be documented in this file.
 ## [0.3.0] - 2026-06-02
 
 ### Added
+- Compression levels (`CompressionLevel`: fastest/fast/normal/best) via zlib
+- Apple Compression framework remains the default when no level is specified
+- zlib backend for explicit level control (system library, zero vendored code)
+- zlib-based decompression fallback for non-Apple platforms
 - Directory entry support with `ZIPEntry.directory()` factory and `isDirectory` property
 - Unix file permissions in external attributes (`unixPermissions` property)
 - Extended timestamps via Universal Time extra field (tag 0x5455, 1-second precision)
 - Reader prefers UT timestamps over DOS timestamps when available
 - Writer sets Unix platform (3) in version-made-by field
 - Default permissions: `0o644` for files, `0o755` for directories
-- 12 new tests (121 total) covering directories, permissions, and extended timestamps
+- 16 new tests (125 total) covering compression levels, directories, permissions, and extended timestamps
 
 ## [0.2.0] - 2026-06-02
 
