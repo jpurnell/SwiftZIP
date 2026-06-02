@@ -510,6 +510,250 @@ struct ZIPWriterTests {
         #expect(uncompressedSize == 0)
     }
 
+    // MARK: - Directory Entries (Phase 1B)
+
+    @Test("Directory entry factory creates entry with trailing slash and empty data")
+    func directoryEntryFactory() throws {
+        let dir = ZIPEntry.directory("src/")
+        #expect(dir.path == "src/")
+        #expect(dir.data.isEmpty)
+        #expect(dir.isDirectory)
+        #expect(dir.method == .stored)
+    }
+
+    @Test("Directory entry round-trips with trailing slash preserved")
+    func directoryRoundTrip() throws {
+        let entries = [
+            ZIPEntry.directory("src/"),
+            ZIPEntry(path: "src/main.swift", data: Data("print(1)".utf8)),
+        ]
+        let archive = try ZIPWriter.write(entries: entries)
+        let result = try ZIPReader.read(from: archive)
+
+        #expect(result.count == 2)
+        #expect(result[0].path == "src/")
+        #expect(result[0].isDirectory)
+        #expect(result[0].data.isEmpty)
+        #expect(result[1].path == "src/main.swift")
+        #expect(!result[1].isDirectory)
+    }
+
+    @Test("isDirectory is false for regular file entries")
+    func isDirectoryFalseForFiles() {
+        let entry = ZIPEntry(path: "readme.txt", data: Data("hello".utf8))
+        #expect(!entry.isDirectory)
+    }
+
+    @Test("Directory entry appends slash if missing")
+    func directoryAppendsSlash() {
+        let dir = ZIPEntry.directory("src")
+        #expect(dir.path == "src/")
+        #expect(dir.isDirectory)
+    }
+
+    // MARK: - Unix File Permissions (Phase 1C)
+
+    @Test("Entry with explicit Unix permissions round-trips correctly")
+    func unixPermissionsRoundTrip() throws {
+        let entry = ZIPEntry(
+            path: "script.sh",
+            data: Data("#!/bin/sh".utf8),
+            unixPermissions: 0o755
+        )
+        let archive = try ZIPWriter.write(entries: [entry])
+        let result = try ZIPReader.read(from: archive)
+
+        #expect(result.count == 1)
+        let perms = try #require(result[0].unixPermissions)
+        #expect(perms == 0o755)
+    }
+
+    @Test("Default file permissions are 0o644")
+    func defaultFilePermissions() throws {
+        let entry = ZIPEntry(path: "file.txt", data: Data("hello".utf8))
+        let archive = try ZIPWriter.write(entries: [entry])
+        let result = try ZIPReader.read(from: archive)
+
+        #expect(result.count == 1)
+        let perms = try #require(result[0].unixPermissions)
+        #expect(perms == 0o644)
+    }
+
+    @Test("Default directory permissions are 0o755")
+    func defaultDirectoryPermissions() throws {
+        let dir = ZIPEntry.directory("bin/")
+        let archive = try ZIPWriter.write(entries: [dir])
+        let result = try ZIPReader.read(from: archive)
+
+        #expect(result.count == 1)
+        let perms = try #require(result[0].unixPermissions)
+        #expect(perms == 0o755)
+    }
+
+    @Test("Writer sets version-made-by to Unix (platform 3)")
+    func writerSetsUnixPlatform() throws {
+        let entry = ZIPEntry(path: "file.txt", data: Data("hello".utf8))
+        let archive = try ZIPWriter.write(entries: [entry])
+
+        // Find central directory: version-made-by is at CD offset + 4
+        let eocdOffset = archive.count - 22
+        let cdOffset = Int(archive.readUInt32(at: eocdOffset + 16))
+        let versionMadeBy = archive.readUInt16(at: cdOffset + 4)
+        let platform = versionMadeBy >> 8
+        #expect(platform == 3) // Unix
+    }
+
+    // MARK: - Extended Timestamps (Phase 1D)
+
+    @Test("Writer emits UT extra field with Unix timestamp")
+    func writerEmitsUTExtraField() throws {
+        let components = DateComponents(
+            calendar: Calendar(identifier: .gregorian),
+            timeZone: TimeZone(identifier: "UTC"),
+            year: 2026, month: 6, day: 2,
+            hour: 14, minute: 30, second: 15
+        )
+        let date = try #require(components.date)
+        let entry = ZIPEntry(path: "ut.txt", data: Data("hello".utf8), modificationDate: date)
+        let archive = try ZIPWriter.write(entries: [entry])
+
+        // Search local header extra fields for tag 0x5455
+        let nameLength = Int(archive.readUInt16(at: 26))
+        let extraLength = Int(archive.readUInt16(at: 28))
+        let extraStart = 30 + nameLength
+        #expect(extraLength > 0)
+
+        var found = false
+        var pos = extraStart
+        while pos + 4 <= extraStart + extraLength {
+            let tag = archive.readUInt16(at: pos)
+            let size = Int(archive.readUInt16(at: pos + 2))
+            if tag == 0x5455 {
+                found = true
+                // flags byte should have bit 0 set (mtime present)
+                let flags = archive[pos + 4]
+                #expect(flags & 0x01 == 0x01)
+                break
+            }
+            pos += 4 + size
+        }
+        #expect(found)
+    }
+
+    @Test("Extended timestamp provides 1-second precision")
+    func extendedTimestampPrecision() throws {
+        let components = DateComponents(
+            calendar: Calendar(identifier: .gregorian),
+            timeZone: TimeZone(identifier: "UTC"),
+            year: 2026, month: 6, day: 2,
+            hour: 14, minute: 30, second: 15 // odd second — DOS would round to 14
+        )
+        let date = try #require(components.date)
+        let entry = ZIPEntry(path: "precise.txt", data: Data("hello".utf8), modificationDate: date)
+        let archive = try ZIPWriter.write(entries: [entry])
+        let result = try ZIPReader.read(from: archive)
+
+        #expect(result.count == 1)
+        let readDate = try #require(result[0].modificationDate)
+        let diff = abs(date.timeIntervalSince(readDate))
+        // Should be within 1 second (UT precision), not 2 seconds (DOS precision)
+        #expect(diff < 1.0)
+    }
+
+    @Test("Reader prefers UT timestamp over DOS timestamp")
+    func readerPrefersUTOverDOS() throws {
+        // Write an entry with an odd second — DOS rounds to even, UT preserves it
+        let components = DateComponents(
+            calendar: Calendar(identifier: .gregorian),
+            timeZone: TimeZone(identifier: "UTC"),
+            year: 2026, month: 6, day: 2,
+            hour: 10, minute: 0, second: 33
+        )
+        let date = try #require(components.date)
+        let entry = ZIPEntry(path: "odd.txt", data: Data("test".utf8), modificationDate: date)
+        let archive = try ZIPWriter.write(entries: [entry])
+        let result = try ZIPReader.read(from: archive)
+
+        let readDate = try #require(result[0].modificationDate)
+        // If reader uses UT field, diff should be < 1s
+        // If reader fell back to DOS, diff would be ~1s (33 → 32)
+        let diff = abs(date.timeIntervalSince(readDate))
+        #expect(diff < 0.5)
+    }
+
+    @Test("Reader falls back to DOS time when UT extra field absent")
+    func readerFallsBackToDOS() throws {
+        // Build a manual archive with no extra fields
+        let content = Data("hello".utf8)
+        let pathData = Data("nout.txt".utf8)
+        let crc = CRC32.calculate(content)
+
+        let components = DateComponents(
+            calendar: Calendar(identifier: .gregorian),
+            timeZone: TimeZone(identifier: "UTC"),
+            year: 2026, month: 6, day: 2,
+            hour: 14, minute: 30, second: 0
+        )
+        let date = try #require(components.date)
+        let timestamp = DOSTime.encode(date)
+
+        var archive = Data()
+
+        // Local file header — no extra fields
+        archive.appendUInt32(0x04034B50)
+        archive.appendUInt16(20)
+        archive.appendUInt16(0)
+        archive.appendUInt16(0) // stored
+        archive.appendUInt16(timestamp.time)
+        archive.appendUInt16(timestamp.date)
+        archive.appendUInt32(crc)
+        archive.appendUInt32(UInt32(content.count))
+        archive.appendUInt32(UInt32(content.count))
+        archive.appendUInt16(UInt16(pathData.count))
+        archive.appendUInt16(0) // no extra field
+        archive.append(pathData)
+        archive.append(content)
+
+        let cdOffset = UInt32(archive.count)
+
+        // Central directory — no extra fields
+        archive.appendUInt32(0x02014B50)
+        archive.appendUInt16(20)
+        archive.appendUInt16(20)
+        archive.appendUInt16(0)
+        archive.appendUInt16(0) // stored
+        archive.appendUInt16(timestamp.time)
+        archive.appendUInt16(timestamp.date)
+        archive.appendUInt32(crc)
+        archive.appendUInt32(UInt32(content.count))
+        archive.appendUInt32(UInt32(content.count))
+        archive.appendUInt16(UInt16(pathData.count))
+        archive.appendUInt16(0) // no extra field
+        archive.appendUInt16(0)
+        archive.appendUInt16(0)
+        archive.appendUInt16(0)
+        archive.appendUInt32(0)
+        archive.appendUInt32(0)
+        archive.append(pathData)
+
+        let cdSize = UInt32(archive.count) - cdOffset
+
+        // EOCD
+        archive.appendUInt32(0x06054B50)
+        archive.appendUInt16(0)
+        archive.appendUInt16(0)
+        archive.appendUInt16(1)
+        archive.appendUInt16(1)
+        archive.appendUInt32(cdSize)
+        archive.appendUInt32(cdOffset)
+        archive.appendUInt16(0)
+
+        let result = try ZIPReader.read(from: archive)
+        let readDate = try #require(result[0].modificationDate)
+        let diff = abs(date.timeIntervalSince(readDate))
+        #expect(diff < 2.0)
+    }
+
     // MARK: - Helpers
 
     /// Checks whether `haystack` contains `needle` as a contiguous subsequence.

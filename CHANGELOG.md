@@ -2,6 +2,17 @@
 
 All notable changes to SwiftZIP will be documented in this file.
 
+## [0.3.0] - 2026-06-02
+
+### Added
+- Directory entry support with `ZIPEntry.directory()` factory and `isDirectory` property
+- Unix file permissions in external attributes (`unixPermissions` property)
+- Extended timestamps via Universal Time extra field (tag 0x5455, 1-second precision)
+- Reader prefers UT timestamps over DOS timestamps when available
+- Writer sets Unix platform (3) in version-made-by field
+- Default permissions: `0o644` for files, `0o755` for directories
+- 12 new tests (121 total) covering directories, permissions, and extended timestamps
+
 ## [0.2.0] - 2026-06-02
 
 ### Added

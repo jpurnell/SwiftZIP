@@ -48,6 +48,7 @@ public enum ZIPReader: Sendable {
     /// Parsed central directory record used during reading.
     private struct CentralDirectoryRecord {
         let compressionMethod: UInt16
+        let versionMadeBy: UInt16
         let modTime: UInt16
         let modDate: UInt16
         let crc32: UInt32
@@ -55,6 +56,8 @@ public enum ZIPReader: Sendable {
         let uncompressedSize: UInt64
         let name: String
         let localHeaderOffset: UInt64
+        let externalAttributes: UInt32
+        let unixTimestamp: Int32?
     }
 
     // MARK: - Public API
@@ -189,6 +192,7 @@ public enum ZIPReader: Sendable {
                 throw ZIPError.invalidSignature
             }
 
+            let versionMadeBy = data.readUInt16(at: cursor + 4)
             let compressionMethod = data.readUInt16(at: cursor + 10)
             let modTime = data.readUInt16(at: cursor + 12)
             let modDate = data.readUInt16(at: cursor + 14)
@@ -198,6 +202,7 @@ public enum ZIPReader: Sendable {
             let nameLength = Int(data.readUInt16(at: cursor + 28))
             let extraLength = Int(data.readUInt16(at: cursor + 30))
             let commentLength = Int(data.readUInt16(at: cursor + 32))
+            let externalAttributes = data.readUInt32(at: cursor + 38)
             var localHeaderOffset = UInt64(data.readUInt32(at: cursor + 42))
 
             let nameStart = cursor + 46
@@ -209,7 +214,8 @@ public enum ZIPReader: Sendable {
             let nameData = data[nameStart..<nameEnd]
             let name = String(decoding: nameData, as: UTF8.self)
 
-            // Parse ZIP64 extra field if sizes or offset are 0xFFFFFFFF
+            var unixTimestamp: Int32?
+
             if extraLength > 0 {
                 let extraStart = nameEnd
                 let extraEnd = extraStart + extraLength
@@ -222,17 +228,23 @@ public enum ZIPReader: Sendable {
                     compressedSize: &compressedSize,
                     localHeaderOffset: &localHeaderOffset
                 )
+                unixTimestamp = parseUTExtra(
+                    data: data, start: extraStart, length: extraLength
+                )
             }
 
             records.append(CentralDirectoryRecord(
                 compressionMethod: compressionMethod,
+                versionMadeBy: versionMadeBy,
                 modTime: modTime,
                 modDate: modDate,
                 crc32: crc32,
                 compressedSize: compressedSize,
                 uncompressedSize: uncompressedSize,
                 name: name,
-                localHeaderOffset: localHeaderOffset
+                localHeaderOffset: localHeaderOffset,
+                externalAttributes: externalAttributes,
+                unixTimestamp: unixTimestamp
             ))
 
             cursor = nameEnd + extraLength + commentLength
@@ -279,6 +291,36 @@ public enum ZIPReader: Sendable {
 
             pos = fieldStart + size
         }
+    }
+
+    /// Parses the Universal Time extra field (tag 0x5455) for mtime.
+    ///
+    /// - Parameters:
+    ///   - data: The raw archive bytes.
+    ///   - start: Start offset of the extra field area.
+    ///   - length: Total length of extra fields.
+    /// - Returns: The Unix timestamp (seconds since epoch) if found, or `nil`.
+    private static func parseUTExtra(data: Data, start: Int, length: Int) -> Int32? {
+        var pos = start
+        let end = start + length
+
+        while pos + 4 <= end {
+            let tag = data.readUInt16(at: pos)
+            let size = Int(data.readUInt16(at: pos + 2))
+            let fieldStart = pos + 4
+
+            guard fieldStart + size <= end else { break }
+
+            if tag == 0x5455, size >= 5 {
+                let flags = data[fieldStart]
+                guard flags & 0x01 != 0 else { return nil }
+                let rawTime = data.readUInt32(at: fieldStart + 1)
+                return Int32(bitPattern: rawTime)
+            }
+
+            pos = fieldStart + size
+        }
+        return nil
     }
 
     /// Extracts a single entry from the archive using its central directory record.
@@ -341,12 +383,28 @@ public enum ZIPReader: Sendable {
             )
         }
 
-        let modificationDate = DOSTime.decode(time: record.modTime, date: record.modDate)
+        let modificationDate: Date?
+        if let unixTime = record.unixTimestamp {
+            modificationDate = Date(timeIntervalSince1970: TimeInterval(unixTime))
+        } else {
+            modificationDate = DOSTime.decode(time: record.modTime, date: record.modDate)
+        }
+
+        let unixPermissions: UInt16?
+        let platform = record.versionMadeBy >> 8
+        if platform == 3 {
+            let rawPerms = UInt16(record.externalAttributes >> 16) & 0o7777
+            unixPermissions = rawPerms > 0 ? rawPerms : nil
+        } else {
+            unixPermissions = nil
+        }
+
         return ZIPEntry(
             path: record.name,
             data: decompressedData,
             method: method,
-            modificationDate: modificationDate
+            modificationDate: modificationDate,
+            unixPermissions: unixPermissions
         )
     }
 }

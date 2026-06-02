@@ -19,6 +19,9 @@ import Foundation
 /// ```
 public enum ZIPWriter: Sendable {
 
+    /// Unix platform identifier for the version-made-by field.
+    private static let unixPlatform: UInt16 = 3
+
     /// Writes entries to a ZIP archive at the given file URL.
     ///
     /// - Parameters:
@@ -30,12 +33,71 @@ public enum ZIPWriter: Sendable {
         try data.write(to: url)
     }
 
+    /// Builds the extra field data for a local file header.
+    private static func buildLocalExtra(
+        needsZip64: Bool,
+        uncompressedSize: UInt64,
+        compressedSize: UInt64,
+        localHeaderOffset: UInt64,
+        modificationDate: Date?
+    ) -> Data {
+        var extra = Data()
+        if needsZip64 {
+            extra.appendUInt16(0x0001)
+            extra.appendUInt16(24)
+            extra.appendUInt64(uncompressedSize)
+            extra.appendUInt64(compressedSize)
+            extra.appendUInt64(localHeaderOffset)
+        }
+        if let date = modificationDate {
+            let unixTime = Int32(date.timeIntervalSince1970)
+            extra.appendUInt16(0x5455)           // UT tag
+            extra.appendUInt16(5)                // size: 1 flag byte + 4 mtime bytes
+            extra.append(0x01)                   // flags: mtime present
+            extra.appendUInt32(UInt32(bitPattern: unixTime))
+        }
+        return extra
+    }
+
+    /// Builds the extra field data for a central directory header.
+    private static func buildCentralExtra(
+        needsZip64: Bool,
+        uncompressedSize: UInt64,
+        compressedSize: UInt64,
+        localHeaderOffset: UInt64,
+        modificationDate: Date?
+    ) -> Data {
+        var extra = Data()
+        if needsZip64 {
+            extra.appendUInt16(0x0001)
+            extra.appendUInt16(24)
+            extra.appendUInt64(uncompressedSize)
+            extra.appendUInt64(compressedSize)
+            extra.appendUInt64(localHeaderOffset)
+        }
+        if let date = modificationDate {
+            let unixTime = Int32(date.timeIntervalSince1970)
+            extra.appendUInt16(0x5455)           // UT tag
+            extra.appendUInt16(5)                // size: 1 flag byte + 4 mtime bytes
+            extra.append(0x01)                   // flags: mtime present
+            extra.appendUInt32(UInt32(bitPattern: unixTime))
+        }
+        return extra
+    }
+
+    /// Computes the external file attributes for Unix.
+    private static func externalAttributes(for entry: ZIPEntry) -> UInt32 {
+        let defaultPerms: UInt16 = entry.isDirectory ? 0o755 : 0o644
+        let perms = entry.unixPermissions ?? defaultPerms
+        let fileType: UInt16 = entry.isDirectory ? 0o040000 : 0o100000
+        return UInt32(fileType | perms) << 16
+    }
+
     /// Writes entries to a ZIP archive and returns the archive data.
     ///
     /// - Parameter entries: The entries to include in the archive.
     /// - Returns: The complete ZIP archive as `Data`.
-    /// - Throws: ``ZIPError/unsupportedCompressionMethod(_:)`` if any entry
-    ///   uses a compression method other than `.stored`.
+    /// - Throws: ``ZIPError/deflateError(_:)`` if compression fails.
     public static func write(entries: [ZIPEntry]) throws -> Data {
         var archive = Data()
         var centralDirectory = Data()
@@ -84,14 +146,24 @@ public enum ZIPWriter: Sendable {
             let localUncompressed = needsZip64Entry ? UInt32(0xFFFFFFFF) : UInt32(uncompressedSize64)
             let localOffset32 = needsZip64Entry ? UInt32(0xFFFFFFFF) : UInt32(localHeaderOffset)
 
-            var zip64Extra = Data()
-            if needsZip64Entry {
-                zip64Extra.appendUInt16(0x0001)
-                zip64Extra.appendUInt16(24)
-                zip64Extra.appendUInt64(uncompressedSize64)
-                zip64Extra.appendUInt64(compressedSize64)
-                zip64Extra.appendUInt64(localHeaderOffset)
-            }
+            let localExtra = buildLocalExtra(
+                needsZip64: needsZip64Entry,
+                uncompressedSize: uncompressedSize64,
+                compressedSize: compressedSize64,
+                localHeaderOffset: localHeaderOffset,
+                modificationDate: entry.modificationDate
+            )
+
+            let centralExtra = buildCentralExtra(
+                needsZip64: needsZip64Entry,
+                uncompressedSize: uncompressedSize64,
+                compressedSize: compressedSize64,
+                localHeaderOffset: localHeaderOffset,
+                modificationDate: entry.modificationDate
+            )
+
+            let extAttrs = externalAttributes(for: entry)
+            let versionMadeBy = (unixPlatform << 8) | (needsZip64Entry ? 45 : 20)
 
             // Local file header
             var local = Data()
@@ -105,16 +177,16 @@ public enum ZIPWriter: Sendable {
             local.appendUInt32(localCompressed)             // compressed size
             local.appendUInt32(localUncompressed)           // uncompressed size
             local.appendUInt16(UInt16(pathData.count))      // file name length
-            local.appendUInt16(UInt16(zip64Extra.count))    // extra field length
+            local.appendUInt16(UInt16(localExtra.count))    // extra field length
             local.append(pathData)
-            if !zip64Extra.isEmpty { local.append(zip64Extra) }
+            if !localExtra.isEmpty { local.append(localExtra) }
             local.append(fileData)
             archive.append(local)
 
             // Central directory header
             var central = Data()
             central.appendUInt32(0x02014b50)                // signature
-            central.appendUInt16(needsZip64Entry ? 45 : 20) // version made by
+            central.appendUInt16(versionMadeBy)             // version made by (Unix)
             central.appendUInt16(needsZip64Entry ? 45 : 20) // version needed
             central.appendUInt16(0)                         // general purpose bit flag
             central.appendUInt16(method.rawValue)           // compression method
@@ -124,14 +196,14 @@ public enum ZIPWriter: Sendable {
             central.appendUInt32(localCompressed)           // compressed size
             central.appendUInt32(localUncompressed)         // uncompressed size
             central.appendUInt16(UInt16(pathData.count))    // file name length
-            central.appendUInt16(UInt16(zip64Extra.count))  // extra field length
+            central.appendUInt16(UInt16(centralExtra.count)) // extra field length
             central.appendUInt16(0)                         // file comment length
             central.appendUInt16(0)                         // disk number start
             central.appendUInt16(0)                         // internal file attributes
-            central.appendUInt32(0)                         // external file attributes
+            central.appendUInt32(extAttrs)                  // external file attributes
             central.appendUInt32(localOffset32)             // relative offset of local header
             central.append(pathData)
-            if !zip64Extra.isEmpty { central.append(zip64Extra) }
+            if !centralExtra.isEmpty { central.append(centralExtra) }
             centralDirectory.append(central)
             entryCount += 1
         }
