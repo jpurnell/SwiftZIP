@@ -40,14 +40,21 @@ public enum ZIPReader: Sendable {
 
     // MARK: - Internal Types
 
+    /// ZIP64 End of Central Directory locator signature.
+    private static let zip64LocatorSignature: UInt32 = 0x07064B50
+    /// ZIP64 End of Central Directory record signature.
+    private static let zip64EOCDSignature: UInt32 = 0x06064B50
+
     /// Parsed central directory record used during reading.
     private struct CentralDirectoryRecord {
         let compressionMethod: UInt16
+        let modTime: UInt16
+        let modDate: UInt16
         let crc32: UInt32
-        let compressedSize: UInt32
-        let uncompressedSize: UInt32
+        let compressedSize: UInt64
+        let uncompressedSize: UInt64
         let name: String
-        let localHeaderOffset: UInt32
+        let localHeaderOffset: UInt64
     }
 
     // MARK: - Public API
@@ -141,28 +148,38 @@ public enum ZIPReader: Sendable {
     /// - Returns: An array of central directory records in order.
     /// - Throws: ``ZIPError`` if the archive structure is invalid.
     private static func parseCentralDirectory(from data: Data) throws -> [CentralDirectoryRecord] {
-        // Step 1: Find EOCD
         let eocdOffset = try findEOCD(in: data)
 
-        // Step 2: Parse EOCD fields
         guard eocdOffset + eocdMinSize <= data.count else {
             throw ZIPError.truncatedArchive
         }
 
-        let entryCount = Int(data.readUInt16(at: eocdOffset + 8))
-        let centralDirOffset = Int(data.readUInt32(at: eocdOffset + 16))
+        var entryCount = Int(data.readUInt16(at: eocdOffset + 8))
+        var centralDirOffset = Int(data.readUInt32(at: eocdOffset + 16))
+
+        // Check for ZIP64 EOCD locator (20 bytes before the standard EOCD)
+        if eocdOffset >= 20 {
+            let locatorOffset = eocdOffset - 20
+            if data.readUInt32(at: locatorOffset) == zip64LocatorSignature {
+                let zip64EOCDOffset = Int(data.readUInt64(at: locatorOffset + 8))
+                if zip64EOCDOffset + 56 <= data.count,
+                   data.readUInt32(at: zip64EOCDOffset) == zip64EOCDSignature
+                {
+                    entryCount = Int(data.readUInt64(at: zip64EOCDOffset + 32))
+                    centralDirOffset = Int(data.readUInt64(at: zip64EOCDOffset + 48))
+                }
+            }
+        }
 
         guard centralDirOffset >= 0, centralDirOffset <= data.count else {
             throw ZIPError.truncatedArchive
         }
 
-        // Step 3: Parse each central directory entry
         var records: [CentralDirectoryRecord] = []
         records.reserveCapacity(entryCount)
         var cursor = centralDirOffset
 
         for _ in 0..<entryCount {
-            // Verify we have at least the fixed-size portion (46 bytes)
             guard cursor + 46 <= data.count else {
                 throw ZIPError.truncatedArchive
             }
@@ -173,13 +190,15 @@ public enum ZIPReader: Sendable {
             }
 
             let compressionMethod = data.readUInt16(at: cursor + 10)
+            let modTime = data.readUInt16(at: cursor + 12)
+            let modDate = data.readUInt16(at: cursor + 14)
             let crc32 = data.readUInt32(at: cursor + 16)
-            let compressedSize = data.readUInt32(at: cursor + 20)
-            let uncompressedSize = data.readUInt32(at: cursor + 24)
+            var compressedSize = UInt64(data.readUInt32(at: cursor + 20))
+            var uncompressedSize = UInt64(data.readUInt32(at: cursor + 24))
             let nameLength = Int(data.readUInt16(at: cursor + 28))
             let extraLength = Int(data.readUInt16(at: cursor + 30))
             let commentLength = Int(data.readUInt16(at: cursor + 32))
-            let localHeaderOffset = data.readUInt32(at: cursor + 42)
+            var localHeaderOffset = UInt64(data.readUInt32(at: cursor + 42))
 
             let nameStart = cursor + 46
             let nameEnd = nameStart + nameLength
@@ -190,8 +209,25 @@ public enum ZIPReader: Sendable {
             let nameData = data[nameStart..<nameEnd]
             let name = String(decoding: nameData, as: UTF8.self)
 
+            // Parse ZIP64 extra field if sizes or offset are 0xFFFFFFFF
+            if extraLength > 0 {
+                let extraStart = nameEnd
+                let extraEnd = extraStart + extraLength
+                guard extraEnd <= data.count else {
+                    throw ZIPError.truncatedArchive
+                }
+                parseZip64Extra(
+                    data: data, start: extraStart, length: extraLength,
+                    uncompressedSize: &uncompressedSize,
+                    compressedSize: &compressedSize,
+                    localHeaderOffset: &localHeaderOffset
+                )
+            }
+
             records.append(CentralDirectoryRecord(
                 compressionMethod: compressionMethod,
+                modTime: modTime,
+                modDate: modDate,
                 crc32: crc32,
                 compressedSize: compressedSize,
                 uncompressedSize: uncompressedSize,
@@ -203,6 +239,46 @@ public enum ZIPReader: Sendable {
         }
 
         return records
+    }
+
+    /// Parses the ZIP64 extended information extra field (tag 0x0001).
+    ///
+    /// Fields are present in order only when the corresponding standard
+    /// field is set to 0xFFFFFFFF (or 0xFFFF for disk number).
+    private static func parseZip64Extra(
+        data: Data, start: Int, length: Int,
+        uncompressedSize: inout UInt64,
+        compressedSize: inout UInt64,
+        localHeaderOffset: inout UInt64
+    ) {
+        var pos = start
+        let end = start + length
+
+        while pos + 4 <= end {
+            let tag = data.readUInt16(at: pos)
+            let size = Int(data.readUInt16(at: pos + 2))
+            let fieldStart = pos + 4
+
+            guard fieldStart + size <= end else { break }
+
+            if tag == 0x0001 {
+                var fieldPos = fieldStart
+                if uncompressedSize == 0xFFFFFFFF, fieldPos + 8 <= fieldStart + size {
+                    uncompressedSize = data.readUInt64(at: fieldPos)
+                    fieldPos += 8
+                }
+                if compressedSize == 0xFFFFFFFF, fieldPos + 8 <= fieldStart + size {
+                    compressedSize = data.readUInt64(at: fieldPos)
+                    fieldPos += 8
+                }
+                if localHeaderOffset == 0xFFFFFFFF, fieldPos + 8 <= fieldStart + size {
+                    localHeaderOffset = data.readUInt64(at: fieldPos)
+                }
+                return
+            }
+
+            pos = fieldStart + size
+        }
     }
 
     /// Extracts a single entry from the archive using its central directory record.
@@ -218,7 +294,6 @@ public enum ZIPReader: Sendable {
     ) throws -> ZIPEntry {
         let localOffset = Int(record.localHeaderOffset)
 
-        // Verify local header signature
         guard localOffset + 30 <= data.count else {
             throw ZIPError.truncatedArchive
         }
@@ -241,7 +316,6 @@ public enum ZIPReader: Sendable {
 
         let compressedData = data[dataStart..<dataEnd]
 
-        // Determine the compression method
         guard let method = CompressionMethod(rawValue: record.compressionMethod) else {
             throw ZIPError.unsupportedCompressionMethod(record.compressionMethod)
         }
@@ -267,6 +341,12 @@ public enum ZIPReader: Sendable {
             )
         }
 
-        return ZIPEntry(path: record.name, data: decompressedData, method: method)
+        let modificationDate = DOSTime.decode(time: record.modTime, date: record.modDate)
+        return ZIPEntry(
+            path: record.name,
+            data: decompressedData,
+            method: method,
+            modificationDate: modificationDate
+        )
     }
 }

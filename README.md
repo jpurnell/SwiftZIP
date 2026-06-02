@@ -5,6 +5,9 @@ Pure-Swift ZIP archive reader and writer with zero external dependencies.
 ## Features
 
 - Read and write ZIP archives with stored and deflated entries
+- Writer Deflate compression with automatic fallback when compression doesn't help
+- MS-DOS modification timestamps (2-second resolution, 1980-2107 range)
+- ZIP64 extensions for archives exceeding 65,534 entries or 4GB sizes
 - CRC-32 integrity verification on read
 - Unicode path support (accented, CJK, emoji characters)
 - Swift 6 strict concurrency compliance (all types Sendable)
@@ -40,7 +43,8 @@ import SwiftZIP
 
 let entries = [
     ZIPEntry(path: "hello.txt", data: Data("Hello, World!".utf8)),
-    ZIPEntry(path: "data.xml", data: Data("<root/>".utf8)),
+    ZIPEntry(path: "data.xml", data: Data("<root/>".utf8), method: .deflated),
+    ZIPEntry(path: "dated.txt", data: Data("timestamped".utf8), modificationDate: Date()),
 ]
 
 // Write to Data
@@ -72,9 +76,8 @@ let paths = try ZIPReader.listEntries(in: archiveData)
 
 ## Limitations
 
-- No ZIP64 support (max 4 GB archive, 65,535 entries)
 - No encryption support
-- Writer currently supports stored entries only (deflated write planned for v0.2.0)
+- No multi-disk archive support
 
 ## License
 

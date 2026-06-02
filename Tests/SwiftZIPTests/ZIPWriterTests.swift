@@ -347,7 +347,7 @@ struct ZIPWriterTests {
 
     // MARK: - Modification Timestamps
 
-    @Test("Entry with modificationDate writes non-zero timestamp in local header")
+    @Test("Entry with modificationDate writes expected DOS time/date in local header")
     func timestampWritten() throws {
         let components = DateComponents(
             calendar: Calendar(identifier: .gregorian),
@@ -355,25 +355,25 @@ struct ZIPWriterTests {
             year: 2026, month: 6, day: 2,
             hour: 14, minute: 30, second: 0
         )
-        let date = components.date!
+        let date = try #require(components.date)
         let entry = ZIPEntry(path: "dated.txt", data: Data("hello".utf8), modificationDate: date)
         let archive = try ZIPWriter.write(entries: [entry])
 
-        let modTime = archive.readUInt16(at: 12)
-        let modDate = archive.readUInt16(at: 14)
-        #expect(modTime != 0)
-        #expect(modDate != 0)
+        let modTime = archive.readUInt16(at: 10)
+        let modDate = archive.readUInt16(at: 12)
+        // 14:30:00 → 0x73C0, 2026-06-02 → 0x5CC2
+        #expect(modTime == 0x73C0)
+        #expect(modDate == 0x5CC2)
     }
 
-    @Test("Entry without modificationDate writes current time, not zero")
+    @Test("Entry without modificationDate writes current year in date field")
     func defaultTimestampNotZero() throws {
         let entry = ZIPEntry(path: "default.txt", data: Data("hello".utf8))
         let archive = try ZIPWriter.write(entries: [entry])
 
-        let modTime = archive.readUInt16(at: 12)
-        let modDate = archive.readUInt16(at: 14)
-        #expect(modDate != 0)
-        // modTime could be zero at midnight, so just check date
+        let modDate = archive.readUInt16(at: 12)
+        let year = Int((modDate >> 9) & 0x7F) + 1980
+        #expect(year >= 2026)
     }
 
     @Test("Modification date round-trips within 2-second precision")
@@ -384,7 +384,7 @@ struct ZIPWriterTests {
             year: 2026, month: 6, day: 2,
             hour: 14, minute: 30, second: 0
         )
-        let date = components.date!
+        let date = try #require(components.date)
         let entry = ZIPEntry(path: "dated.txt", data: Data("hello".utf8), modificationDate: date)
         let archive = try ZIPWriter.write(entries: [entry])
         let result = try ZIPReader.read(from: archive)
