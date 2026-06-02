@@ -2,8 +2,9 @@ import Foundation
 
 /// Creates ZIP archives from a collection of entries.
 ///
-/// All entries are written using the stored method (no compression).
-/// Deflate compression is not yet supported.
+/// Supports both stored (method 0) and deflated (method 8) entries.
+/// When deflate is requested, the writer falls back to stored if
+/// compression does not reduce size.
 ///
 /// ## Usage
 /// ```swift
@@ -41,30 +42,55 @@ public enum ZIPWriter: Sendable {
         var centralEntryCount: UInt16 = 0
 
         for entry in entries {
-            guard entry.method == .stored else {
-                throw ZIPError.unsupportedCompressionMethod(entry.method.rawValue)
-            }
-
             let localHeaderOffset = UInt32(archive.count)
             let pathData = Data(entry.path.utf8)
             let crc = CRC32.calculate(entry.data)
-            let size = UInt32(entry.data.count)
+            let uncompressedSize = UInt32(entry.data.count)
+
+            let timestamp = DOSTime.encode(entry.modificationDate ?? Date())
+            let fileData: Data
+            let method: CompressionMethod
+            let compressedSize: UInt32
+
+            switch entry.method {
+            case .stored:
+                fileData = entry.data
+                method = .stored
+                compressedSize = uncompressedSize
+            case .deflated:
+                if entry.data.isEmpty {
+                    fileData = Data()
+                    method = .stored
+                    compressedSize = 0
+                } else {
+                    let compressed = try Deflate.compress(entry.data)
+                    if compressed.count < entry.data.count {
+                        fileData = compressed
+                        method = .deflated
+                        compressedSize = UInt32(compressed.count)
+                    } else {
+                        fileData = entry.data
+                        method = .stored
+                        compressedSize = uncompressedSize
+                    }
+                }
+            }
 
             // Local file header
             var local = Data()
             local.appendUInt32(0x04034b50)                  // signature
             local.appendUInt16(20)                          // version needed
             local.appendUInt16(0)                           // general purpose bit flag
-            local.appendUInt16(entry.method.rawValue)       // compression method
-            local.appendUInt16(0)                           // last mod file time
-            local.appendUInt16(0)                           // last mod file date
+            local.appendUInt16(method.rawValue)             // compression method
+            local.appendUInt16(timestamp.time)              // last mod file time
+            local.appendUInt16(timestamp.date)              // last mod file date
             local.appendUInt32(crc)                         // CRC-32
-            local.appendUInt32(size)                        // compressed size
-            local.appendUInt32(size)                        // uncompressed size
+            local.appendUInt32(compressedSize)              // compressed size
+            local.appendUInt32(uncompressedSize)            // uncompressed size
             local.appendUInt16(UInt16(pathData.count))      // file name length
             local.appendUInt16(0)                           // extra field length
             local.append(pathData)
-            local.append(entry.data)
+            local.append(fileData)
             archive.append(local)
 
             // Central directory header
@@ -73,12 +99,12 @@ public enum ZIPWriter: Sendable {
             central.appendUInt16(20)                        // version made by
             central.appendUInt16(20)                        // version needed
             central.appendUInt16(0)                         // general purpose bit flag
-            central.appendUInt16(entry.method.rawValue)     // compression method
-            central.appendUInt16(0)                         // last mod file time
-            central.appendUInt16(0)                         // last mod file date
+            central.appendUInt16(method.rawValue)           // compression method
+            central.appendUInt16(timestamp.time)            // last mod file time
+            central.appendUInt16(timestamp.date)            // last mod file date
             central.appendUInt32(crc)                       // CRC-32
-            central.appendUInt32(size)                      // compressed size
-            central.appendUInt32(size)                      // uncompressed size
+            central.appendUInt32(compressedSize)            // compressed size
+            central.appendUInt32(uncompressedSize)          // uncompressed size
             central.appendUInt16(UInt16(pathData.count))    // file name length
             central.appendUInt16(0)                         // extra field length
             central.appendUInt16(0)                         // file comment length

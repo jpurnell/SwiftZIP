@@ -262,14 +262,202 @@ struct ZIPWriterTests {
         #expect(localCRC == centralCRC)
     }
 
-    // MARK: - Compression Method Validation
+    // MARK: - Writer Deflate Support
 
-    @Test("Deflated entries throw unsupported compression error")
-    func deflatedEntryThrows() throws {
-        let entry = ZIPEntry(path: "compressed.txt", data: Data("data".utf8), method: .deflated)
-        #expect(throws: ZIPError.self) {
-            _ = try ZIPWriter.write(entries: [entry])
+    @Test("Deflated entry is written and round-trips correctly")
+    func deflatedEntryRoundTrip() throws {
+        let original = Data(String(repeating: "Hello, World! This is a test of deflate in the writer. ", count: 50).utf8)
+        let entry = ZIPEntry(path: "compressed.txt", data: original, method: .deflated)
+        let archive = try ZIPWriter.write(entries: [entry])
+        let result = try ZIPReader.read(from: archive)
+
+        #expect(result.count == 1)
+        #expect(result[0].path == "compressed.txt")
+        #expect(result[0].data == original)
+        #expect(result[0].method == .deflated)
+    }
+
+    @Test("Deflated XML entry produces smaller archive than stored")
+    func deflatedSmallerThanStored() throws {
+        let xml = String(repeating: "<row><c r=\"A1\"><v>42</v></c></row>\n", count: 200)
+        let xmlData = Data(xml.utf8)
+
+        let storedArchive = try ZIPWriter.write(entries: [
+            ZIPEntry(path: "data.xml", data: xmlData, method: .stored),
+        ])
+        let deflatedArchive = try ZIPWriter.write(entries: [
+            ZIPEntry(path: "data.xml", data: xmlData, method: .deflated),
+        ])
+
+        #expect(deflatedArchive.count < storedArchive.count)
+    }
+
+    @Test("Mixed stored and deflated entries round-trip correctly")
+    func mixedStoredAndDeflated() throws {
+        let entries = [
+            ZIPEntry(path: "stored.txt", data: Data("small".utf8), method: .stored),
+            ZIPEntry(path: "deflated.xml", data: Data(String(repeating: "<x/>", count: 100).utf8), method: .deflated),
+            ZIPEntry(path: "also_stored.bin", data: Data([0xCA, 0xFE]), method: .stored),
+        ]
+        let archive = try ZIPWriter.write(entries: entries)
+        let result = try ZIPReader.read(from: archive)
+
+        #expect(result.count == 3)
+        for (original, read) in zip(entries, result) {
+            #expect(read.path == original.path)
+            #expect(read.data == original.data)
+            #expect(read.method == original.method)
         }
+    }
+
+    @Test("Deflated empty data entry round-trips correctly")
+    func deflatedEmptyData() throws {
+        let entry = ZIPEntry(path: "empty.dat", data: Data(), method: .deflated)
+        let archive = try ZIPWriter.write(entries: [entry])
+        let result = try ZIPReader.read(from: archive)
+
+        #expect(result.count == 1)
+        #expect(result[0].data.isEmpty)
+    }
+
+    @Test("Deflated 500KB entry round-trips with correct data")
+    func deflatedLargeEntry() throws {
+        var large = Data()
+        for i in 0..<5000 {
+            large.append(contentsOf: "Line \(i): repetitive content for compression.\n".utf8)
+        }
+        let entry = ZIPEntry(path: "large.txt", data: large, method: .deflated)
+        let archive = try ZIPWriter.write(entries: [entry])
+        let result = try ZIPReader.read(from: archive)
+
+        #expect(result.count == 1)
+        #expect(result[0].data == large)
+    }
+
+    @Test("Writer deflated archive validates with CRC-32 on read")
+    func deflatedCRCIntegrity() throws {
+        let data = Data("CRC integrity check for deflated writer output".utf8)
+        let entry = ZIPEntry(path: "crc.txt", data: data, method: .deflated)
+        let archive = try ZIPWriter.write(entries: [entry])
+
+        let localCRC = archive.readUInt32(at: 14)
+        let expectedCRC = CRC32.calculate(data)
+        #expect(localCRC == expectedCRC)
+    }
+
+    // MARK: - Modification Timestamps
+
+    @Test("Entry with modificationDate writes non-zero timestamp in local header")
+    func timestampWritten() throws {
+        let components = DateComponents(
+            calendar: Calendar(identifier: .gregorian),
+            timeZone: TimeZone(identifier: "UTC"),
+            year: 2026, month: 6, day: 2,
+            hour: 14, minute: 30, second: 0
+        )
+        let date = components.date!
+        let entry = ZIPEntry(path: "dated.txt", data: Data("hello".utf8), modificationDate: date)
+        let archive = try ZIPWriter.write(entries: [entry])
+
+        let modTime = archive.readUInt16(at: 12)
+        let modDate = archive.readUInt16(at: 14)
+        #expect(modTime != 0)
+        #expect(modDate != 0)
+    }
+
+    @Test("Entry without modificationDate writes current time, not zero")
+    func defaultTimestampNotZero() throws {
+        let entry = ZIPEntry(path: "default.txt", data: Data("hello".utf8))
+        let archive = try ZIPWriter.write(entries: [entry])
+
+        let modTime = archive.readUInt16(at: 12)
+        let modDate = archive.readUInt16(at: 14)
+        #expect(modDate != 0)
+        // modTime could be zero at midnight, so just check date
+    }
+
+    @Test("Modification date round-trips within 2-second precision")
+    func timestampRoundTrip() throws {
+        let components = DateComponents(
+            calendar: Calendar(identifier: .gregorian),
+            timeZone: TimeZone(identifier: "UTC"),
+            year: 2026, month: 6, day: 2,
+            hour: 14, minute: 30, second: 0
+        )
+        let date = components.date!
+        let entry = ZIPEntry(path: "dated.txt", data: Data("hello".utf8), modificationDate: date)
+        let archive = try ZIPWriter.write(entries: [entry])
+        let result = try ZIPReader.read(from: archive)
+
+        #expect(result.count == 1)
+        let readDate = try #require(result[0].modificationDate)
+        let diff = abs(date.timeIntervalSince(readDate))
+        #expect(diff < 2.0)
+    }
+
+    @Test("Archive with zero timestamps reads back with nil modificationDate")
+    func zeroTimestampReadsNil() throws {
+        // Use the old-style archive (already written with zero timestamps from earlier tests)
+        let entry = ZIPEntry(path: "old.txt", data: Data("hello".utf8))
+        // Build a manual archive with zero timestamps
+        var archive = Data()
+        let pathData = Data("old.txt".utf8)
+        let content = Data("hello".utf8)
+        let crc = CRC32.calculate(content)
+
+        // Local file header with zero timestamps
+        archive.appendUInt32(0x04034B50)
+        archive.appendUInt16(20)
+        archive.appendUInt16(0)
+        archive.appendUInt16(0)       // stored
+        archive.appendUInt16(0)       // mod time = 0
+        archive.appendUInt16(0)       // mod date = 0
+        archive.appendUInt32(crc)
+        archive.appendUInt32(UInt32(content.count))
+        archive.appendUInt32(UInt32(content.count))
+        archive.appendUInt16(UInt16(pathData.count))
+        archive.appendUInt16(0)
+        archive.append(pathData)
+        archive.append(content)
+
+        let cdOffset = UInt32(archive.count)
+
+        // Central directory
+        archive.appendUInt32(0x02014B50)
+        archive.appendUInt16(20)
+        archive.appendUInt16(20)
+        archive.appendUInt16(0)
+        archive.appendUInt16(0)       // stored
+        archive.appendUInt16(0)       // mod time = 0
+        archive.appendUInt16(0)       // mod date = 0
+        archive.appendUInt32(crc)
+        archive.appendUInt32(UInt32(content.count))
+        archive.appendUInt32(UInt32(content.count))
+        archive.appendUInt16(UInt16(pathData.count))
+        archive.appendUInt16(0)
+        archive.appendUInt16(0)
+        archive.appendUInt16(0)
+        archive.appendUInt16(0)
+        archive.appendUInt32(0)
+        archive.appendUInt32(0)       // local header offset
+        archive.append(pathData)
+
+        let cdSize = UInt32(archive.count) - cdOffset
+
+        // EOCD
+        archive.appendUInt32(0x06054B50)
+        archive.appendUInt16(0)
+        archive.appendUInt16(0)
+        archive.appendUInt16(1)
+        archive.appendUInt16(1)
+        archive.appendUInt32(cdSize)
+        archive.appendUInt32(cdOffset)
+        archive.appendUInt16(0)
+
+        let result = try ZIPReader.read(from: archive)
+        #expect(result.count == 1)
+        #expect(result[0].modificationDate == nil)
+        _ = entry // suppress unused warning
     }
 
     // MARK: - Structure Validation

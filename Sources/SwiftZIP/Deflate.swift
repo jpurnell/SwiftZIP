@@ -54,7 +54,7 @@ enum Deflate: Sendable {
     /// - Parameter data: The uncompressed bytes to compress.
     /// - Returns: The deflate-compressed data.
     /// - Throws: ``ZIPError/deflateError(_:)`` if compression fails.
-    static func compress(_ data: Data) throws -> Data { // LIVE: used by tests and planned for writer Deflate support (Phase 4)
+    static func compress(_ data: Data) throws -> Data {
         guard !data.isEmpty else { return Data() }
 
         #if canImport(Compression)
