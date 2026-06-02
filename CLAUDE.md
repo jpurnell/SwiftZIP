@@ -47,12 +47,13 @@ Run `quality-gate` before every commit. All checks must pass.
 
 # SwiftZIP — Pure Swift ZIP Reader/Writer
 
-Zero-dependency Swift library for reading and writing ZIP archives.
+Swift library for reading and writing ZIP archives.
 
 ## Key Rules
 
 - No force unwraps (`!`), no `try!`, no force casts (`as!`)
-- Zero external dependencies — Foundation + Compression framework only
+- Dependencies: Foundation, Compression framework, system zlib (CZlib target)
+- No vendored C code — zlib is a system library on all Swift platforms
 - All public APIs require DocC documentation
 - All types must be Sendable
 

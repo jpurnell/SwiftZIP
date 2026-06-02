@@ -1,17 +1,18 @@
 # SwiftZIP
 
-Pure-Swift ZIP archive reader and writer with zero external dependencies.
+Pure-Swift ZIP archive reader and writer. No vendored C code — uses system zlib
+for compression level control and Apple's Compression framework as the default.
 
 ## Features
 
 - Read and write ZIP archives with stored and deflated entries
-- Writer Deflate compression with automatic fallback when compression doesn't help
-- MS-DOS modification timestamps (2-second resolution, 1980-2107 range)
+- Compression levels (fastest/fast/normal/best) via zlib, with Compression framework default
+- Directory entries with Unix file permissions (644/755 defaults)
+- Extended timestamps (UT extra field, 1-second precision) with DOS fallback
 - ZIP64 extensions for archives exceeding 65,534 entries or 4GB sizes
 - CRC-32 integrity verification on read
 - Unicode path support (accented, CJK, emoji characters)
 - Swift 6 strict concurrency compliance (all types Sendable)
-- Foundation + Apple Compression framework only
 
 ## Requirements
 
@@ -43,8 +44,9 @@ import SwiftZIP
 
 let entries = [
     ZIPEntry(path: "hello.txt", data: Data("Hello, World!".utf8)),
-    ZIPEntry(path: "data.xml", data: Data("<root/>".utf8), method: .deflated),
-    ZIPEntry(path: "dated.txt", data: Data("timestamped".utf8), modificationDate: Date()),
+    ZIPEntry(path: "data.xml", data: Data("<root/>".utf8), method: .deflated, compressionLevel: .best),
+    ZIPEntry(path: "script.sh", data: Data("#!/bin/sh".utf8), unixPermissions: 0o755),
+    ZIPEntry.directory("src/"),
 ]
 
 // Write to Data
