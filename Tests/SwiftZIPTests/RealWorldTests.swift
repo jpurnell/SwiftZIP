@@ -219,15 +219,15 @@ struct RealWorldTests {
         let archive = try ZIPWriter.write(entries: zipEntries)
 
         // Read the workbook by path
-        let workbook = try ZIPReader.readEntry(named: "xl/workbook.xml", from: archive)
-        #expect(workbook != nil)
-        let workbookXML = String(decoding: workbook?.data ?? Data(), as: UTF8.self)
+        let workbookOpt = try ZIPReader.readEntry(named: "xl/workbook.xml", from: archive)
+        let workbook = try #require(workbookOpt)
+        let workbookXML = String(decoding: workbook.data, as: UTF8.self)
         #expect(workbookXML.contains("<sheet name=\"Sheet1\""))
 
         // Read the styles by path
-        let styles = try ZIPReader.readEntry(named: "xl/styles.xml", from: archive)
-        #expect(styles != nil)
-        let stylesXML = String(decoding: styles?.data ?? Data(), as: UTF8.self)
+        let stylesOpt = try ZIPReader.readEntry(named: "xl/styles.xml", from: archive)
+        let styles = try #require(stylesOpt)
+        let stylesXML = String(decoding: styles.data, as: UTF8.self)
         #expect(stylesXML.contains("<font>"))
 
         // Non-existent path returns nil

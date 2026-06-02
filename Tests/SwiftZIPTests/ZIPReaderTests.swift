@@ -36,10 +36,10 @@ struct ZIPReaderTests {
         ]
         let archive = try ZIPWriter.write(entries: entries)
 
-        let found = try ZIPReader.readEntry(named: "second.txt", from: archive)
-        #expect(found != nil)
-        #expect(found?.path == "second.txt")
-        #expect(found?.data == Data("Second".utf8))
+        let foundOpt = try ZIPReader.readEntry(named: "second.txt", from: archive)
+        let found = try #require(foundOpt)
+        #expect(found.path == "second.txt")
+        #expect(found.data == Data("Second".utf8))
     }
 
     // MARK: - Read Missing Entry

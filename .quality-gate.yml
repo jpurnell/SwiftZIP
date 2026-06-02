@@ -1,0 +1,12 @@
+consistency:
+  corpusPath: /Users/jpurnell/Dropbox/Computer/Development/Swift/Tools/org-judgement-corpus
+  projectID: SwiftZIP
+  consistencyThreshold: 0.7
+  defaultRiskTier: 3
+
+ijs:
+  projectID: "SwiftZIP"
+  corpusPath: "/Users/jpurnell/Dropbox/Computer/Development/Swift/Tools/org-judgement-corpus"
+  decisionOwner: "jpurnell"
+  defaultRiskTier: 3
+  remoteURL: "git@github.com:jpurnell/org-judgement-corpus.git"

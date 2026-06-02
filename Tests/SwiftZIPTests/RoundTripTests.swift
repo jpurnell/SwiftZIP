@@ -231,10 +231,10 @@ struct RoundTripTests {
 
         for i in 0..<10 {
             let name = "item_\(i).dat"
-            let found = try ZIPReader.readEntry(named: name, from: archive)
-            #expect(found != nil)
-            #expect(found?.path == name)
-            #expect(found?.data == Data("payload_\(i)".utf8))
+            let foundOpt = try ZIPReader.readEntry(named: name, from: archive)
+            let found = try #require(foundOpt)
+            #expect(found.path == name)
+            #expect(found.data == Data("payload_\(i)".utf8))
         }
     }
 

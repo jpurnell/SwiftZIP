@@ -280,21 +280,14 @@ struct ZIPWriterTests {
         let data = try ZIPWriter.write(entries: [entry])
         let bytes = [UInt8](data)
 
-        // Find each signature
-        let localOffset = findSignature(in: bytes, signature: localFileHeaderSignature)
-        let centralOffset = findSignature(in: bytes, signature: centralDirSignature)
-        let eocdOffset = findSignature(in: bytes, signature: eocdSignature)
-
-        // All three must exist
-        #expect(localOffset != nil)
-        #expect(centralOffset != nil)
-        #expect(eocdOffset != nil)
+        // Find each signature — all three must exist
+        let localOffset = try #require(findSignature(in: bytes, signature: localFileHeaderSignature))
+        let centralOffset = try #require(findSignature(in: bytes, signature: centralDirSignature))
+        let eocdOffset = try #require(findSignature(in: bytes, signature: eocdSignature))
 
         // They must appear in order: local < central < eocd
-        if let local = localOffset, let central = centralOffset, let eocd = eocdOffset {
-            #expect(local < central)
-            #expect(central < eocd)
-        }
+        #expect(localOffset < centralOffset)
+        #expect(centralOffset < eocdOffset)
     }
 
     @Test("Central directory offset in EOCD is correct")
