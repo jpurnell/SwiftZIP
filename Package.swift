@@ -1,4 +1,5 @@
 // swift-tools-version: 6.2
+// legibility:description: Pure-Swift ZIP archive reader and writer.
 
 import PackageDescription
 
