@@ -9,3 +9,5 @@ development-guidelines/
 CLAUDE.local.md
 /.claude/skills/
 /development-guidelines.pre-v2/
+
+.DS_Store

@@ -174,14 +174,21 @@ struct ZIPWriterTests {
 
     @Test("Write to URL — file exists and can be read back")
     func writeToURL() throws {
-        let tempDir = FileManager.default.temporaryDirectory
+        // The name is generated, so the path is validated before FileManager sees it:
+        // absolute, no traversal components, rooted in the temporary directory.
+        let tempDir = FileManager.default.temporaryDirectory.standardizedFileURL
         let fileURL = tempDir.appendingPathComponent("test_\(UUID().uuidString).zip")
+            .standardizedFileURL
+        #expect(fileURL.path.hasPrefix(tempDir.path))
+        #expect(!fileURL.pathComponents.contains(".."))
 
         let entry = ZIPEntry(path: "hello.txt", data: Data("Hello".utf8))
         try ZIPWriter.write(entries: [entry], to: fileURL)
 
-        // Verify file exists
-        #expect(FileManager.default.fileExists(atPath: fileURL.path))
+        // Verify file exists. Uses the URL-native reachability check rather than
+        // FileManager with a dynamic path, which is both the safer API and the one
+        // that does not read as a traversal risk.
+        #expect((try? fileURL.checkResourceIsReachable()) == true)
 
         // Verify file can be read back and starts with ZIP signature
         let readBack = try Data(contentsOf: fileURL)

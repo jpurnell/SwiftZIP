@@ -43,16 +43,23 @@ SwiftZIP/
 │   ├── ZIPReader.swift          -- Parse ZIP archives
 │   ├── ZIPError.swift           -- Structured errors
 │   ├── CompressionMethod.swift  -- .stored / .deflated
-│   ├── Deflate.swift            -- Compress/decompress via Compression framework
+│   ├── GzipMember.swift         -- Read RFC 1952 gzip members (header + DEFLATE + CRC-32)
+│   ├── Deflate.swift            -- Compress/decompress via Compression framework and zlib
+│   ├── CompressionLevel.swift   -- Deflate level, carried per entry
+│   ├── DOSTime.swift            -- MS-DOS date/time encoding
 │   ├── CRC32.swift              -- CRC-32 lookup table + calculation
-│   └── DataHelpers.swift        -- Data extensions for reading/writing LE integers
+│   ├── DataHelpers.swift        -- Data extensions for reading/writing LE integers
+│   └── SwiftZIP.docc/           -- DocC catalogue (fences are compiled by doc-code)
+├── Sources/CZlib/               -- systemLibrary shim over libz
 ├── Tests/SwiftZIPTests/
 │   ├── CRC32Tests.swift
 │   ├── ZIPWriterTests.swift
 │   ├── DeflateTests.swift
 │   ├── ZIPReaderTests.swift
 │   ├── RoundTripTests.swift
-│   └── RealWorldTests.swift
+│   ├── GzipMemberTests.swift
+│   ├── RealWorldTests.swift
+│   └── Fixtures/gzip/           -- gzip members produced by the system gzip, committed
 └── Package.swift
 ```
 
@@ -137,16 +144,28 @@ public enum ZIPError: Error, Equatable, Sendable {
 - [x] ZIPReader (EOCD scan, central directory parse, entry extraction, Deflate decompression, CRC-32 verification)
 - [x] Round-trip tests (write -> read -> verify)
 - [x] Real-world tests (read actual .xlsx files produced by SwiftXLSX)
-- [x] 88 tests passing, zero warnings
+- [x] Writer Deflate support -- entries compress on write, level carried per entry
+- [x] ZIP64 (archives > 4 GB and > 65,535 entries)
+- [x] gzip reader (`GzipMember`) -- variable-length RFC 1952 header, CRC-32 verified
+- [x] DocC catalogue, with fences compiled by the gate's doc-code checker
+- [x] 136 tests passing, quality gate 0 errors / 0 warnings
 
-### Library Status: v0.1.0 -- Functional
+### Library Status: v0.3.0 shipped; gzip is unreleased on main
 
-The library handles the complete read/write cycle for ZIP archives with stored and Deflated entries. It is the ZIP backend for SwiftXLSX.
+The library handles the complete read/write cycle for ZIP archives with stored and
+Deflated entries, including ZIP64. It is the ZIP backend for SwiftXLSX, and now also
+reads standalone gzip members for concordance.
+
+Reading gzip stretched the package past its name. The two formats are different
+containers over the same DEFLATE stream, so `GzipMember` reuses `Deflate` and `CRC32`
+outright; nothing was duplicated to add it. The name is now slightly narrower than
+the contents, which is worth noting but not worth a rename.
 
 ### Current Priorities
-1. Development-guidelines setup (this step)
-2. Writer compression support (Deflate on write, not just read)
-3. Streaming reader for large archives (future)
+1. ~~Development-guidelines setup~~ -- done, vendored
+2. ~~Writer compression support (Deflate on write, not just read)~~ -- shipped
+3. Streaming reader for large archives -- still the main gap. `GzipMember` decodes a
+   313 MB member to 620 MB in memory, which works but does not scale.
 
 ---
 
@@ -181,18 +200,33 @@ The library handles the complete read/write cycle for ZIP archives with stored a
 - [x] SwiftXLSX migrated to depend on SwiftZIP
 - [x] All 88 SwiftZIP tests + all 1490 SwiftXLSX tests passing
 
-### Phase 4: Polish (Current)
-- [ ] Development-guidelines integration
-- [ ] Writer Deflate support (compress on write for smaller archives)
-- [ ] Progress callback for large archives
-- [ ] README.md with usage examples
+### Phase 4: Polish ✅ COMPLETE
+- [x] ~~Development-guidelines integration~~
+- [x] ~~Writer Deflate support (compress on write for smaller archives)~~
+- [x] ~~README.md with usage examples~~
+- [ ] Progress callback for large archives -- not built; belongs with the streaming
+      reader below, since both need the same incremental read path
+
+### Phase 5: gzip ✅ COMPLETE
+- [x] `GzipMember` -- RFC 1952 header/trailer around the existing DEFLATE decoder
+- [x] Corruption detected via the trailing CRC-32, never returned to the caller
+- [x] Fixtures from the system gzip, committed rather than generated in-process
 
 ### Future Considerations
 - Streaming reader (process entries without loading entire archive into memory)
 - Linux support (pure-Swift Deflate behind `#if !canImport(Compression)`)
-- ZIP64 for archives > 4 GB
+- ~~ZIP64 for archives > 4 GB~~ -- **shipped.** Listed here as a future consideration
+  when the plan was written; it moved to Current Status once SwiftXLSX needed archives
+  above the 65,535-entry limit.
+- Multi-member gzip streams (concatenated members) -- `GzipMember` reads the first
+  member only, which covers every file we have; revisit if that stops being true
 - Password-protected archives
 
 ---
 
-**Last Updated:** 2026-06-02 (initial master plan; 88 tests; v0.1.0)
+**Last Updated:** 2026-08-22 -- reconciled against shipped code. The plan had drifted:
+it recorded 88 tests (now 136), listed ZIP64 as a future consideration when it had
+already shipped, described Deflate as reaching zlib through the Compression framework
+alone when a `CZlib` systemLibrary target was added in June, and carried a Phase 4
+whose items were all complete. Added `GzipMember`, the DocC catalogue, and the
+`CZlib`/Fixtures entries to the module structure.

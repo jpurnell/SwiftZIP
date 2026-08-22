@@ -1,7 +1,8 @@
 # SwiftZIP
 
-Pure-Swift ZIP archive reader and writer. No vendored C code — uses system zlib
-for compression level control and Apple's Compression framework as the default.
+Pure-Swift ZIP archive reader and writer, and a gzip reader. No vendored C code —
+uses system zlib for compression level control and Apple's Compression framework as
+the default.
 
 ## Features
 
@@ -11,6 +12,8 @@ for compression level control and Apple's Compression framework as the default.
 - Extended timestamps (UT extra field, 1-second precision) with DOS fallback
 - ZIP64 extensions for archives exceeding 65,534 entries or 4GB sizes
 - CRC-32 integrity verification on read
+- Reads standalone gzip members (RFC 1952), a separate container over the same
+  DEFLATE stream, with the trailing CRC-32 verified
 - Unicode path support (accented, CJK, emoji characters)
 - Swift 6 strict concurrency compliance (all types Sendable)
 
@@ -76,10 +79,24 @@ if let entry = try ZIPReader.readEntry(named: "hello.txt", from: archiveData) {
 let paths = try ZIPReader.listEntries(in: archiveData)
 ```
 
+### Reading a gzip file
+
+```swift
+import SwiftZIP
+
+// Accepts .gz and plain files alike, so a caller that may receive either need not branch
+let bytes = try GzipMember.read(contentsOf: url)
+
+// Or decompress in memory, with the trailing CRC-32 checked
+let out = try GzipMember.decompress(gzData)
+```
+
 ## Limitations
 
 - No encryption support
 - No multi-disk archive support
+- Archives and gzip members are read into memory; there is no streaming reader yet
+- `GzipMember` reads the first member of a stream, not concatenated multi-member gzip
 
 ## License
 
