@@ -14,6 +14,7 @@ the default.
 - CRC-32 integrity verification on read
 - Reads standalone gzip members (RFC 1952), a separate container over the same
   DEFLATE stream, with the trailing CRC-32 verified
+- Reads zlib-wrapped streams (RFC 1950) of unknown output size, with Adler-32 verified
 - Unicode path support (accented, CJK, emoji characters)
 - Swift 6 strict concurrency compliance (all types Sendable)
 

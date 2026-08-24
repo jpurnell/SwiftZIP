@@ -5,6 +5,17 @@ All notable changes to SwiftZIP will be documented in this file.
 ## [Unreleased]
 
 ### Added
+- `ZlibStream` reads zlib-wrapped DEFLATE (RFC 1950) — the third container over the same
+  engine, alongside raw deflate for ZIP entries and RFC 1952 for gzip
+- Inflates streams whose output size is **unknown**, growing the buffer as needed.
+  `Deflate` cannot serve this case: a ZIP entry's central directory declares its
+  uncompressed size, so that path takes the size as an argument, while a bare zlib stream
+  declares nothing
+- `ZlibStream.isZlib(_:)` validates both header bytes, including the multiple-of-31 rule
+  that distinguishes a real header from two bytes that merely start with `0x78`
+- Corruption is detected via zlib's Adler-32 and reported, never returned
+
+### Added
 - `GzipMember` reads standalone gzip members (RFC 1952) -- a different container from
   ZIP, built from the pieces already here: the existing `Deflate` decoder unwrapped by
   a gzip header and trailer, with `CRC32` verifying the result
