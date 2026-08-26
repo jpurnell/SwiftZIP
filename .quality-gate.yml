@@ -1,3 +1,9 @@
+# Run the full checker set. Five checkers (including doc-run and doc-comment-code)
+# are outside the default selection; leaving them unselected let broken doc examples
+# sit undetected until 0.6.0.
+enabledCheckers:
+  - all
+
 consistency:
   corpusPath: /Users/jpurnell/Dropbox/Computer/Development/Swift/Tools/org-judgement-corpus
   projectID: SwiftZIP

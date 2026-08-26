@@ -147,10 +147,14 @@ public enum ZIPError: Error, Equatable, Sendable {
 - [x] Writer Deflate support -- entries compress on write, level carried per entry
 - [x] ZIP64 (archives > 4 GB and > 65,535 entries)
 - [x] gzip reader (`GzipMember`) -- variable-length RFC 1952 header, CRC-32 verified
-- [x] DocC catalogue, with fences compiled by the gate's doc-code checker
-- [x] 136 tests passing, quality gate 0 errors / 0 warnings
+- [x] DocC catalogue. This line previously claimed the fences were compiled by the
+      gate's doc-code checker. They were not: `doc-code`, `doc-run`, and
+      `doc-comment-code` sit outside the default checker selection, so nothing
+      compiled them and five examples were broken. Fixed and the full set enabled
+      in 0.6.0
+- [x] 144 tests passing, quality gate 0 errors / 0 warnings across 45 of 45 checkers
 
-### Library Status: v0.3.0 shipped; gzip is unreleased on main
+### Library Status: v0.6.0 shipped (gzip and zlib included)
 
 The library handles the complete read/write cycle for ZIP archives with stored and
 Deflated entries, including ZIP64. It is the ZIP backend for SwiftXLSX, and now also
@@ -224,7 +228,14 @@ the contents, which is worth noting but not worth a rename.
 
 ---
 
-**Last Updated:** 2026-08-22 -- reconciled against shipped code. The plan had drifted:
+**Last Updated:** 2026-08-25 -- reconciled for the 0.6.0 release. Recorded `ZlibStream`
+alongside `GzipMember`, corrected the test count to 144, and set Library Status to v0.6.0
+(it still read "v0.3.0 shipped; gzip is unreleased on main"). Corrected this plan's own
+claim that the DocC fences were compiled by the gate: `doc-code`, `doc-run`, and
+`doc-comment-code` are outside the default checker selection, so nothing compiled them and
+five examples were broken until 0.6.0 enabled the full set.
+
+*Previous entry, 2026-08-22:* reconciled against shipped code. The plan had drifted:
 it recorded 88 tests (now 136), listed ZIP64 as a future consideration when it had
 already shipped, described Deflate as reaching zlib through the Compression framework
 alone when a `CZlib` systemLibrary target was added in June, and carried a Phase 4

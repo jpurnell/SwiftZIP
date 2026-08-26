@@ -21,7 +21,11 @@ Every read path is total: malformed, truncated, or hostile input returns a
 import Foundation
 import SwiftZIP
 
-let archiveData = Data()
+// A real archive to read back: an empty `Data()` is a truncated archive, not an
+// empty one, and reading it throws.
+let archiveData = try ZIPWriter.write(entries: [
+    ZIPEntry(path: "notes.txt", data: Data("hello".utf8))
+])
 for entry in try ZIPReader.read(from: archiveData) where !entry.isDirectory {
     print(entry.path, entry.data.count)
 }
@@ -47,7 +51,10 @@ caller that may receive either does not have to branch:
 import Foundation
 import SwiftZIP
 
-let url = URL(fileURLWithPath: "/tmp/index.jsonl.gz")
+let url = URL(fileURLWithPath: NSTemporaryDirectory())
+    .appendingPathComponent("index.jsonl")
+try Data("{\"ok\":true}\n".utf8).write(to: url)
+
 let bytes = try GzipMember.read(contentsOf: url)   // .gz or not
 ```
 

@@ -9,19 +9,26 @@ import Foundation
 ///
 /// ## Usage
 /// ```swift
-/// // Read all entries from a file
-/// let entries = try ZIPReader.read(from: fileURL)
+/// let archiveData = try ZIPWriter.write(entries: [
+///     ZIPEntry(path: "hello.txt", data: Data("Hello".utf8))
+/// ])
 ///
 /// // Read all entries from in-memory data
 /// let entries = try ZIPReader.read(from: archiveData)
 ///
 /// // Read a single entry by path
-/// if let entry = try ZIPReader.readEntry(named: "hello.txt", from: data) {
-///     print(String(data: entry.data, encoding: .utf8)!)
+/// if let entry = try ZIPReader.readEntry(named: "hello.txt", from: archiveData) {
+///     print(String(decoding: entry.data, as: UTF8.self))
 /// }
 ///
 /// // List entry paths without decompressing
-/// let paths = try ZIPReader.listEntries(in: data)
+/// let paths = try ZIPReader.listEntries(in: archiveData)
+///
+/// // Or read straight from a file
+/// let fileURL = URL(fileURLWithPath: NSTemporaryDirectory())
+///     .appendingPathComponent("archive.zip")
+/// try archiveData.write(to: fileURL)
+/// let fromDisk = try ZIPReader.read(from: fileURL)
 /// ```
 public enum ZIPReader: Sendable {
 

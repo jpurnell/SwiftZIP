@@ -13,6 +13,8 @@ import Foundation
 ///     ZIPEntry(path: "world.txt", data: Data("World".utf8)),
 /// ]
 /// // Write to a file
+/// let fileURL = URL(fileURLWithPath: NSTemporaryDirectory())
+///     .appendingPathComponent("archive.zip")
 /// try ZIPWriter.write(entries: entries, to: fileURL)
 /// // Or get the archive bytes directly
 /// let archiveData = try ZIPWriter.write(entries: entries)
