@@ -101,4 +101,9 @@ let out = try GzipMember.decompress(gzData)
 
 ## License
 
-MIT
+Apache License 2.0 — see [LICENSE](LICENSE) and [NOTICE](NOTICE).
+
+Permissive deliberately. This is shared plumbing: it is more useful the more
+widely it is used, and it carries no copyleft. The copyleft layers of the family
+(SwiftExcelFunctions, BusinessMath, BusinessMathExcel) are AGPLv3 with a
+commercial option; copyleft may depend on permissive, never the reverse.
