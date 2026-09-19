@@ -18,4 +18,18 @@ status:
 # Refuse to trust a gate binary older than this. A stale binary silently runs
 # old rules; without this pin nothing says so. Ratchet on each deploy that the
 # repo depends on. Warns on every run; fails only under --strict.
-minimumGateVersion: "2026-08-26"
+#
+# Ratcheted to 2026-09-19 for quality-gate-swift 3ceb94a, "a calendar pinned in
+# the same call is not ambient". Before that carve-out, ambient-calendar-in-test
+# matched Calendar(identifier:) on sight and only looked for a *later* statement
+# assigning .timeZone, so it missed the sibling-argument form these tests use:
+#
+#     DateComponents(calendar: Calendar(identifier: .gregorian),
+#                    timeZone: TimeZone(identifier: "UTC"), ...)
+#
+# That cost eleven phantom errors across DOSTimeTests and ZIPWriterTests on three
+# consecutive daily runs, against code the rule's own source calls exemplary. The
+# old pin cleared a binary two days stale without a word. This is what the pin is
+# for: a gate that predates the fix should refuse to run, not fail us with
+# findings we cannot fix.
+minimumGateVersion: "2026-09-19"
