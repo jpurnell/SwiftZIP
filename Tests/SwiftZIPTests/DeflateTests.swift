@@ -105,7 +105,7 @@ struct DeflateTests {
 
     // MARK: - Error Cases
 
-    @Test("Decompress with wrong uncompressedSize throws deflateError")
+    @Test("Decompress with wrong uncompressedSize throws decompressionFailed")
     func sizeMismatchThrows() throws {
         let original = Data("Hello, World!".utf8)
         let compressed = try Deflate.compress(original)

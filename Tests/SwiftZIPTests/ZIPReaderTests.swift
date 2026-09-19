@@ -167,8 +167,8 @@ struct ZIPReaderTests {
 
     // MARK: - Truncated Archive
 
-    @Test("Truncated archive yields truncatedArchive error")
-    func truncatedArchive() throws {
+    @Test("Truncated archive yields truncated error")
+    func truncatedArchiveIsReported() throws {
         let entry = ZIPEntry(path: "hello.txt", data: Data("Hello".utf8))
         let archive = try ZIPWriter.write(entries: [entry])
 

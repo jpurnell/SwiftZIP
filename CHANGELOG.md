@@ -4,6 +4,29 @@ All notable changes to SwiftZIP will be documented in this file.
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-09-19
+
+### Changed
+- **Breaking.** One error vocabulary for every container. `GzipMember.Failure` and
+  `ZlibStream.Failure` are gone; `ZIPReader`, `ZIPWriter`, `GzipMember` and `ZlibStream`
+  all throw `ZIPError`. Three enums had grown to fifteen cases that did not agree — two
+  nested types both named `Failure`, `checksumMismatch` carrying a path in one and not
+  the other, and "input ended early" spelled three ways. Seven cases now cover all of it.
+  Which container failed is told by the call you made, not by the error
+- `ZIPError.truncatedArchive` is now `.truncated`; `.deflateError(_:)` is now
+  `.decompressionFailed(_:)`
+- `ZIPError.checksumMismatch` takes `path: String?`. A gzip member has a checksum but no
+  path to attach it to, and optional is more honest than an empty string
+- Unified deliberately before 1.0, which freezes the vocabulary. Doing it after would
+  cost a major version
+
+### Added
+- Apache 2.0 license and NOTICE, making the package usable by the public it is published
+  to (shipped in 3780269, unreleased until now)
+
+### Fixed
+- README advertised a ZIP64 threshold of 65,534 entries; the format's limit is 65,535
+
 ## [0.6.0] - 2026-08-25
 
 ### Added

@@ -10,7 +10,7 @@ the default.
 - Compression levels (fastest/fast/normal/best) via zlib, with Compression framework default
 - Directory entries with Unix file permissions (644/755 defaults)
 - Extended timestamps (UT extra field, 1-second precision) with DOS fallback
-- ZIP64 extensions for archives exceeding 65,534 entries or 4GB sizes
+- ZIP64 extensions for archives exceeding 65,535 entries or 4GB sizes
 - CRC-32 integrity verification on read
 - Reads standalone gzip members (RFC 1952), a separate container over the same
   DEFLATE stream, with the trailing CRC-32 verified
@@ -29,7 +29,7 @@ Add SwiftZIP to your `Package.swift`:
 
 ```swift
 dependencies: [
-    .package(url: "https://github.com/jpurnell/SwiftZIP.git", from: "0.6.0"),
+    .package(url: "https://github.com/jpurnell/SwiftZIP.git", from: "0.7.0"),
 ]
 ```
 

@@ -53,14 +53,16 @@ struct ZlibStreamTests {
         // ZIP entries are raw deflate with no wrapper. Accepting one here would silently
         // read the first two payload bytes as a header.
         let raw = Data([0x4B, 0x4C, 0x4A, 0x4E, 0x49, 0x4D, 0x4B, 0x07, 0x00])
-        #expect(throws: (any Error).self) { _ = try ZlibStream.inflate(raw) }
+        #expect(throws: ZIPError.invalidSignature) { _ = try ZlibStream.inflate(raw) }
     }
 
     @Test("Empty and truncated input are reported, never trapped")
     func emptyAndTruncatedAreReported() {
-        #expect(throws: (any Error).self) { _ = try ZlibStream.inflate(Data()) }
-        #expect(throws: (any Error).self) { _ = try ZlibStream.inflate(Data([0x78])) }
-        #expect(throws: (any Error).self) { _ = try ZlibStream.inflate(Data([0x78, 0x9C])) }
+        // Under two bytes there is no header to read; two bytes is a valid header with
+        // nothing behind it. Both are truncation, and the unified vocabulary says so once.
+        #expect(throws: ZIPError.truncated) { _ = try ZlibStream.inflate(Data()) }
+        #expect(throws: ZIPError.truncated) { _ = try ZlibStream.inflate(Data([0x78])) }
+        #expect(throws: ZIPError.truncated) { _ = try ZlibStream.inflate(Data([0x78, 0x9C])) }
     }
 
     @Test("Arbitrary bytes never trap", arguments: [

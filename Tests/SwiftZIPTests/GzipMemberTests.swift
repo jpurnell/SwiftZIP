@@ -81,14 +81,14 @@ func corruptionIsDetected() throws {
 
 @Test("Non-gzip input is reported")
 func rejectsNonGzip() {
-    #expect(throws: GzipMember.Failure.notGzip) {
+    #expect(throws: ZIPError.invalidSignature) {
         _ = try GzipMember.decompress(Data(repeating: 0x41, count: 64))
     }
 }
 
 @Test("Truncated input is reported")
 func rejectsTruncated() {
-    #expect(throws: GzipMember.Failure.tooShort) {
+    #expect(throws: ZIPError.truncated) {
         _ = try GzipMember.decompress(Data([0x1F, 0x8B, 0x08, 0x00]))
     }
 }
@@ -98,7 +98,7 @@ func rejectsMalformedHeader() throws {
     var bytes = [UInt8](try fixture("no-name"))
     bytes[3] = 0x04                    // claim FEXTRA…
     bytes[10] = 0xFF; bytes[11] = 0xFF // …of 65,535 bytes
-    #expect(throws: GzipMember.Failure.malformedHeader) {
+    #expect(throws: ZIPError.malformedHeader) {
         _ = try GzipMember.decompress(Data(bytes))
     }
 }

@@ -14,17 +14,6 @@ import CZlib
 /// allocated from a number the caller does not have.
 public enum ZlibStream: Sendable {
 
-    /// Why a zlib stream could not be read.
-    public enum Failure: Error, Sendable, Equatable {
-        /// Fewer bytes than a header requires.
-        case tooShort
-        /// The two-byte header is not a valid zlib one.
-        case notZlib
-        /// zlib rejected the stream. Carries its error code.
-        case inflateFailed(Int32)
-        /// The stream ended before zlib reported completion — truncated input.
-        case truncated
-    }
 
     /// Whether the data begins with a valid zlib header.
     ///
@@ -47,19 +36,19 @@ public enum ZlibStream: Sendable {
     ///
     /// - Parameter data: The complete compressed stream.
     /// - Returns: The inflated bytes.
-    /// - Throws: ``Failure`` when the header is wrong, the stream is truncated, or zlib
+    /// - Throws: ``ZIPError`` when the header is wrong, the stream is truncated, or zlib
     ///   rejects the data — which includes a failed Adler-32, so silent corruption is
     ///   reported rather than returned.
     public static func inflate(_ data: Data) throws -> Data {
-        guard data.count >= 2 else { throw Failure.tooShort }
-        guard isZlib(data) else { throw Failure.notZlib }
+        guard data.count >= 2 else { throw ZIPError.truncated }
+        guard isZlib(data) else { throw ZIPError.invalidSignature }
 
         var stream = z_stream()
         // 15 rather than -15: positive window bits mean "expect a zlib wrapper", which is
         // exactly the difference between this and `Deflate`'s raw path.
         let started = inflateInit2_(&stream, 15, ZLIB_VERSION,
                                     Int32(MemoryLayout<z_stream>.size))
-        guard started == Z_OK else { throw Failure.inflateFailed(started) }
+        guard started == Z_OK else { throw ZIPError.decompressionFailed("zlib inflateInit failed: \(started)") }
         defer { inflateEnd(&stream) }
 
         var output = Data()
@@ -80,19 +69,19 @@ public enum ZlibStream: Sendable {
                 }
 
                 guard status == Z_OK || status == Z_STREAM_END || status == Z_BUF_ERROR else {
-                    throw Failure.inflateFailed(status)
+                    throw ZIPError.decompressionFailed("zlib inflate failed: \(status)")
                 }
                 if produced > 0 { output.append(contentsOf: chunk[0..<produced]) }
 
                 // Z_BUF_ERROR with nothing produced and nothing left to read means zlib
                 // wants more input that will never arrive: the stream is truncated.
                 if status == Z_BUF_ERROR, produced == 0, stream.avail_in == 0 {
-                    throw Failure.truncated
+                    throw ZIPError.truncated
                 }
             } while status != Z_STREAM_END
         }
 
-        guard status == Z_STREAM_END else { throw Failure.truncated }
+        guard status == Z_STREAM_END else { throw ZIPError.truncated }
         return output
     }
 

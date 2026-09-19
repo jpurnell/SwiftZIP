@@ -132,10 +132,10 @@ public enum ZIPReader: Sendable {
     /// - Parameter data: The raw ZIP archive bytes.
     /// - Returns: The byte offset of the EOCD signature within `data`.
     /// - Throws: ``ZIPError/missingEndOfCentralDirectory`` if no EOCD is found,
-    ///           ``ZIPError/truncatedArchive`` if the data is too small.
+    ///           ``ZIPError/truncated`` if the data is too small.
     private static func findEOCD(in data: Data) throws -> Int {
         guard data.count >= eocdMinSize else {
-            throw ZIPError.truncatedArchive
+            throw ZIPError.truncated
         }
 
         let scanLimit = min(data.count, eocdMaxScanDistance)
@@ -161,7 +161,7 @@ public enum ZIPReader: Sendable {
         let eocdOffset = try findEOCD(in: data)
 
         guard eocdOffset + eocdMinSize <= data.count else {
-            throw ZIPError.truncatedArchive
+            throw ZIPError.truncated
         }
 
         var entryCount = Int(data.readUInt16(at: eocdOffset + 8))
@@ -182,7 +182,7 @@ public enum ZIPReader: Sendable {
         }
 
         guard centralDirOffset >= 0, centralDirOffset <= data.count else {
-            throw ZIPError.truncatedArchive
+            throw ZIPError.truncated
         }
 
         var records: [CentralDirectoryRecord] = []
@@ -191,7 +191,7 @@ public enum ZIPReader: Sendable {
 
         for _ in 0..<entryCount {
             guard cursor + 46 <= data.count else {
-                throw ZIPError.truncatedArchive
+                throw ZIPError.truncated
             }
 
             let signature = data.readUInt32(at: cursor)
@@ -215,7 +215,7 @@ public enum ZIPReader: Sendable {
             let nameStart = cursor + 46
             let nameEnd = nameStart + nameLength
             guard nameEnd <= data.count else {
-                throw ZIPError.truncatedArchive
+                throw ZIPError.truncated
             }
 
             let nameData = data[nameStart..<nameEnd]
@@ -227,7 +227,7 @@ public enum ZIPReader: Sendable {
                 let extraStart = nameEnd
                 let extraEnd = extraStart + extraLength
                 guard extraEnd <= data.count else {
-                    throw ZIPError.truncatedArchive
+                    throw ZIPError.truncated
                 }
                 parseZip64Extra(
                     data: data, start: extraStart, length: extraLength,
@@ -344,7 +344,7 @@ public enum ZIPReader: Sendable {
         let localOffset = Int(record.localHeaderOffset)
 
         guard localOffset + 30 <= data.count else {
-            throw ZIPError.truncatedArchive
+            throw ZIPError.truncated
         }
 
         let localSignature = data.readUInt32(at: localOffset)
@@ -360,7 +360,7 @@ public enum ZIPReader: Sendable {
         let dataEnd = dataStart + compressedSize
 
         guard dataEnd <= data.count else {
-            throw ZIPError.truncatedArchive
+            throw ZIPError.truncated
         }
 
         let compressedData = data[dataStart..<dataEnd]

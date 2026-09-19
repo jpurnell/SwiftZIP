@@ -99,7 +99,7 @@ public enum ZIPWriter: Sendable {
     ///
     /// - Parameter entries: The entries to include in the archive.
     /// - Returns: The complete ZIP archive as `Data`.
-    /// - Throws: ``ZIPError/deflateError(_:)`` if compression fails.
+    /// - Throws: ``ZIPError/decompressionFailed(_:)`` if compression fails.
     public static func write(entries: [ZIPEntry]) throws -> Data {
         var archive = Data()
         var centralDirectory = Data()

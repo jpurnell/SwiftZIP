@@ -44,6 +44,7 @@ SwiftZIP/
 │   ├── ZIPError.swift           -- Structured errors
 │   ├── CompressionMethod.swift  -- .stored / .deflated
 │   ├── GzipMember.swift         -- Read RFC 1952 gzip members (header + DEFLATE + CRC-32)
+│   ├── ZlibStream.swift         -- Read RFC 1950 zlib streams of unknown output size
 │   ├── Deflate.swift            -- Compress/decompress via Compression framework and zlib
 │   ├── CompressionLevel.swift   -- Deflate level, carried per entry
 │   ├── DOSTime.swift            -- MS-DOS date/time encoding
@@ -59,7 +60,9 @@ SwiftZIP/
 │   ├── RoundTripTests.swift
 │   ├── GzipMemberTests.swift
 │   ├── RealWorldTests.swift
-│   └── Fixtures/gzip/           -- gzip members produced by the system gzip, committed
+│   ├── ZlibStreamTests.swift
+│   ├── ZIP64Tests.swift
+│   └── Fixtures/gzip/, Fixtures/zlib/           -- gzip members produced by the system gzip, committed
 └── Package.swift
 ```
 
@@ -71,43 +74,60 @@ public struct ZIPEntry: Sendable, Equatable {
     public let path: String
     public let data: Data
     public let method: CompressionMethod
-    public init(path: String, data: Data, method: CompressionMethod = .stored)
+    public let modificationDate: Date?
+    public let unixPermissions: UInt16?
+    public let compressionLevel: CompressionLevel?
+    public init(path: String, data: Data, method: CompressionMethod = .stored,
+                modificationDate: Date? = nil, unixPermissions: UInt16? = nil,
+                compressionLevel: CompressionLevel? = nil)
+    public static func directory(_ path: String, modificationDate: Date? = nil,
+                                 unixPermissions: UInt16? = nil) -> ZIPEntry
 }
 
-public enum CompressionMethod: UInt16, Sendable {
-    case stored = 0
-    case deflated = 8
-}
+public enum CompressionMethod: UInt16, Sendable { case stored = 0, deflated = 8 }
+public enum CompressionLevel: Int, Sendable, Equatable { case fastest = 1, fast = 3, normal = 5, best = 9 }
 
-// ZIPWriter -- create ZIP archives
-public enum ZIPWriter {
+// ZIPWriter / ZIPReader -- create and parse ZIP archives
+public enum ZIPWriter: Sendable {
     public static func write(entries: [ZIPEntry], to url: URL) throws
     public static func write(entries: [ZIPEntry]) throws -> Data
 }
 
-// ZIPReader -- read ZIP archives
-public enum ZIPReader {
+public enum ZIPReader: Sendable {
     public static func read(from url: URL) throws -> [ZIPEntry]
     public static func read(from data: Data) throws -> [ZIPEntry]
     public static func readEntry(named path: String, from data: Data) throws -> ZIPEntry?
     public static func listEntries(in data: Data) throws -> [String]
 }
 
-// ZIPError
+// GzipMember / ZlibStream -- the other two containers over the same DEFLATE engine
+public enum GzipMember {
+    public static func isGzip(_ data: Data) -> Bool
+    public static func decompress(_ data: Data) throws -> Data
+    public static func read(contentsOf url: URL) throws -> Data
+}
+
+public enum ZlibStream: Sendable {
+    public static func isZlib(_ data: Data) -> Bool
+    public static func inflate(_ data: Data) throws -> Data
+}
+
+// ZIPError -- one vocabulary for all three containers (0.7.0)
 public enum ZIPError: Error, Equatable, Sendable {
+    case truncated
     case invalidSignature
+    case malformedHeader
     case missingEndOfCentralDirectory
     case unsupportedCompressionMethod(UInt16)
-    case checksumMismatch(path: String, expected: UInt32, actual: UInt32)
-    case deflateError(String)
-    case truncatedArchive
+    case checksumMismatch(path: String?, expected: UInt32, actual: UInt32)
+    case decompressionFailed(String)
 }
 ```
 
 ### ZIP Format Implementation
 
 **Write path:**
-1. Local file header + raw data for each entry (stored, no compression in writer v1)
+1. Local file header + entry data, stored or Deflated per the entry's method
 2. Central directory with file metadata
 3. End of Central Directory Record (EOCD)
 
@@ -126,10 +146,11 @@ public enum ZIPError: Error, Equatable, Sendable {
 1. **Foundation + Compression only.** No external dependencies, ever. The Compression framework is an Apple system framework available on all target platforms.
 2. **Entry-based API.** The unit of work is `[ZIPEntry]`, not streams or iterators. This is appropriate for the expected archive sizes (spreadsheets, documents) and keeps the API simple.
 3. **Enum-based namespaces.** `ZIPWriter` and `ZIPReader` are caseless enums with static methods, not classes or structs. No state to manage.
-4. **CRC-32 on read, not on write.** Writer stores CRC-32 for each entry; reader verifies it. Writer does not compress (entries stored as-is); reader decompresses Deflate.
-5. **No ZIP64.** Maximum archive size is 4 GB, maximum entry count is 65,535. Sufficient for document formats. Documented limitation.
-6. **No encryption.** Encrypted entries return `unsupportedCompressionMethod`. Documented limitation.
+4. **CRC-32 on read, not on write.** Writer stores CRC-32 for each entry; reader verifies it. ~~Writer does not compress (entries stored as-is)~~ — **superseded.** The writer has compressed since Phase 4, with the level carried per entry via `CompressionLevel`. The original decision is kept here because it explains why `CompressionMethod` defaults to `.stored`.
+5. ~~**No ZIP64.** Maximum archive size is 4 GB, maximum entry count is 65,535. Sufficient for document formats. Documented limitation.~~ — **superseded.** "Sufficient for document formats" was wrong within three months: SwiftXLSX needed archives past the 65,535-entry limit, and ZIP64 shipped. Recorded rather than deleted, because the reasoning was sound and the premise was not.
+6. **No encryption.** Encrypted entries return `unsupportedCompressionMethod`. Documented limitation. Still true.
 7. **Data descriptor support.** Reader handles bit 3 flag (sizes stored after entry data).
+8. **One error vocabulary.** Every container throws `ZIPError`; which one failed is told by the call site, not carried in the error. See `plans/proposals/0002-UnifiedErrors.md`. Settled in 0.7.0 because 1.0 freezes it.
 
 ---
 
@@ -154,7 +175,7 @@ public enum ZIPError: Error, Equatable, Sendable {
       in 0.6.0
 - [x] 144 tests passing, quality gate 0 errors / 0 warnings across 45 of 45 checkers
 
-### Library Status: v0.6.0 shipped (gzip and zlib included)
+### Library Status: v0.7.0 shipped (one error vocabulary)
 
 The library handles the complete read/write cycle for ZIP archives with stored and
 Deflated entries, including ZIP64. It is the ZIP backend for SwiftXLSX, and now also
@@ -165,11 +186,39 @@ containers over the same DEFLATE stream, so `GzipMember` reuses `Deflate` and `C
 outright; nothing was duplicated to add it. The name is now slightly narrower than
 the contents, which is worth noting but not worth a rename.
 
+0.7.0 finished what that growth started. Each container had arrived with its own error
+enum, and by three containers they no longer agreed — fifteen cases, two types both
+named `Failure`, and "input ended early" spelled three ways. They are one seven-case
+`ZIPError` now. It is a breaking change, taken deliberately at 0.x rather than
+inherited into 1.0, which freezes the vocabulary.
+
 ### Current Priorities
 1. ~~Development-guidelines setup~~ -- done, vendored
 2. ~~Writer compression support (Deflate on write, not just read)~~ -- shipped
-3. Streaming reader for large archives -- still the main gap. `GzipMember` decodes a
-   313 MB member to 620 MB in memory, which works but does not scale.
+3. ~~One error vocabulary across the three containers~~ -- shipped in 0.7.0
+4. Streaming reader for large archives -- still the main gap, and now the largest
+   single item standing between here and 1.0. `GzipMember` decodes a 313 MB member to
+   620 MB in memory, which works but does not scale.
+
+### The road to 1.0
+
+**1.0 ships when the roadmap below is complete, not when the API feels settled.**
+
+The public surface is already stable enough to freeze — nothing outstanding requires a
+breaking change, which is why 0.7.0 spent its breaking change now rather than saving it.
+What 1.0 additionally promises is that the documented limitations are gone, not merely
+documented. Those are the Future Considerations below, and each is additive:
+
+| For 1.0 | Additive? | Why it is not done |
+|---|---|---|
+| Streaming reader | yes — new entry points beside `read(from:)` | the main gap; whole archive is held in memory |
+| Progress callback | yes — needs the same incremental path | belongs with streaming, not before it |
+| Linux support | yes — pure-Swift Deflate behind `#if !canImport(Compression)` | untested; `platforms:` declares macOS/iOS only |
+| Multi-member gzip | behaviour change, so before 1.0 | `GzipMember` reads the first member only |
+| Password-protected archives | yes | no consumer has asked |
+
+If any of these turns out to need a breaking change after all, it takes the version with
+it — the promise is semver, not a date.
 
 ---
 
@@ -216,19 +265,41 @@ the contents, which is worth noting but not worth a rename.
 - [x] Corruption detected via the trailing CRC-32, never returned to the caller
 - [x] Fixtures from the system gzip, committed rather than generated in-process
 
-### Future Considerations
+### Phase 6: One Error Vocabulary ✅ COMPLETE (0.7.0)
+- [x] `GzipMember.Failure` and `ZlibStream.Failure` folded into `ZIPError`
+- [x] Fifteen cases across three types reduced to seven in one
+- [x] Loose `#expect(throws: (any Error).self)` in `ZlibStreamTests` tightened to named cases
+- [x] `plans/proposals/0002-UnifiedErrors.md` records the mapping and the reasoning
+
+### Phase 7: 1.0 — the items below, complete
+
+These were "Future Considerations" when the plan was written. They are now the
+definition of 1.0 rather than a wishlist beside it; see **The road to 1.0** above.
+
 - Streaming reader (process entries without loading entire archive into memory)
 - Linux support (pure-Swift Deflate behind `#if !canImport(Compression)`)
 - ~~ZIP64 for archives > 4 GB~~ -- **shipped.** Listed here as a future consideration
   when the plan was written; it moved to Current Status once SwiftXLSX needed archives
   above the 65,535-entry limit.
 - Multi-member gzip streams (concatenated members) -- `GzipMember` reads the first
-  member only, which covers every file we have; revisit if that stops being true
+  member only, which covers every file we have. Unlike the rest of this list this one
+  changes existing behaviour, so it lands before 1.0 or not at all
 - Password-protected archives
 
 ---
 
-**Last Updated:** 2026-08-25 -- reconciled for the 0.6.0 release. Recorded `ZlibStream`
+**Last Updated:** 2026-09-19 -- reconciled for the 0.7.0 release. Folded the three error
+enums into one and recorded the decision as Core Architectural Decision 8. Corrected two
+decisions this plan had kept asserting after the code stopped agreeing: #4 still said the
+writer does not compress, and #5 still said "No ZIP64" with the note that 4 GB was
+"sufficient for document formats" — it was not sufficient within three months. Both are
+struck through with the reasoning kept, rather than deleted. Replaced the Public API block
+wholesale: it had never been updated past 0.1 and omitted `CompressionLevel`, `ZlibStream`,
+`GzipMember`, and four of `ZIPEntry`'s six initialiser parameters. Added `ZlibStream.swift`
+and two test files to the module structure. Recast the Future Considerations as Phase 7,
+which is now the definition of 1.0.
+
+*Previous entry, 2026-08-25:* reconciled for the 0.6.0 release. Recorded `ZlibStream`
 alongside `GzipMember`, corrected the test count to 144, and set Library Status to v0.6.0
 (it still read "v0.3.0 shipped; gzip is unreleased on main"). Corrected this plan's own
 claim that the DocC fences were compiled by the gate: `doc-code`, `doc-run`, and

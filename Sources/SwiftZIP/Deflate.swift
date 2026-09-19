@@ -17,7 +17,7 @@ enum Deflate: Sendable {
     ///   - compressedData: The deflate-compressed bytes.
     ///   - uncompressedSize: The expected size of the decompressed output.
     /// - Returns: The decompressed data.
-    /// - Throws: ``ZIPError/deflateError(_:)`` if decompression fails.
+    /// - Throws: ``ZIPError/decompressionFailed(_:)`` if decompression fails.
     static func decompress(_ compressedData: Data, uncompressedSize: Int) throws -> Data {
         guard uncompressedSize > 0 else { return Data() }
 
@@ -44,7 +44,7 @@ enum Deflate: Sendable {
             )
         }
         guard decodedSize == uncompressedSize else {
-            throw ZIPError.deflateError(
+            throw ZIPError.decompressionFailed(
                 "Decompression produced \(decodedSize) bytes, expected \(uncompressedSize)"
             )
         }
@@ -58,7 +58,7 @@ enum Deflate: Sendable {
     ///   - data: The uncompressed bytes to compress.
     ///   - level: The compression level, or `nil` to use the framework default.
     /// - Returns: The deflate-compressed data.
-    /// - Throws: ``ZIPError/deflateError(_:)`` if compression fails.
+    /// - Throws: ``ZIPError/decompressionFailed(_:)`` if compression fails.
     static func compress(_ data: Data, level: CompressionLevel? = nil) throws -> Data {
         guard !data.isEmpty else { return Data() }
 
@@ -87,7 +87,7 @@ enum Deflate: Sendable {
             )
         }
         guard compressedSize > 0 else {
-            throw ZIPError.deflateError("Compression failed")
+            throw ZIPError.decompressionFailed("Compression failed")
         }
         return Data(destBuffer[0..<compressedSize])
     }
@@ -106,7 +106,7 @@ enum Deflate: Sendable {
             Int32(MemoryLayout<z_stream>.size)
         )
         guard initResult == Z_OK else {
-            throw ZIPError.deflateError("zlib deflateInit2 failed: \(initResult)")
+            throw ZIPError.decompressionFailed("zlib deflateInit2 failed: \(initResult)")
         }
 
         let destCapacity = Int(deflateBound(&stream, UInt(data.count)))
@@ -132,7 +132,7 @@ enum Deflate: Sendable {
 
             guard result == Z_STREAM_END else {
                 // compressedSize will be checked below but we need to handle the error path
-                throw ZIPError.deflateError("zlib deflate failed: \(result)")
+                throw ZIPError.decompressionFailed("zlib deflate failed: \(result)")
             }
         } catch {
             throw error
@@ -153,7 +153,7 @@ enum Deflate: Sendable {
             Int32(MemoryLayout<z_stream>.size)
         )
         guard initResult == Z_OK else {
-            throw ZIPError.deflateError("zlib inflateInit2 failed: \(initResult)")
+            throw ZIPError.decompressionFailed("zlib inflateInit2 failed: \(initResult)")
         }
 
         var destBuffer = [UInt8](repeating: 0, count: uncompressedSize)
@@ -174,11 +174,11 @@ enum Deflate: Sendable {
         inflateEnd(&stream)
 
         guard result == Z_STREAM_END else {
-            throw ZIPError.deflateError("zlib inflate failed: \(result)")
+            throw ZIPError.decompressionFailed("zlib inflate failed: \(result)")
         }
 
         guard decodedSize == uncompressedSize else {
-            throw ZIPError.deflateError(
+            throw ZIPError.decompressionFailed(
                 "Decompression produced \(decodedSize) bytes, expected \(uncompressedSize)"
             )
         }

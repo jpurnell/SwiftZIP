@@ -1,17 +1,27 @@
 import Foundation
 
-/// Errors that can occur during ZIP read or write operations.
+/// Errors raised while reading or writing any container this package understands.
+///
+/// One vocabulary covers ZIP archives, gzip members, and zlib streams. Which container
+/// failed is not carried in the error because the call site already names it: a
+/// `.invalidSignature` out of ``GzipMember/decompress(_:)`` means the data was not gzip,
+/// and out of ``ZlibStream/inflate(_:)`` that it was not zlib.
 public enum ZIPError: Error, Equatable, Sendable {
-    /// The data does not contain a valid ZIP signature.
+    /// The data ends before a structure it declares, or is too short to hold one.
+    case truncated
+    /// The data does not carry the signature the reader expected.
     case invalidSignature
+    /// A header is present but its contents are not readable.
+    case malformedHeader
     /// The end of central directory record was not found.
     case missingEndOfCentralDirectory
-    /// An entry uses an unsupported compression method.
+    /// An entry or member uses a compression method this package does not implement.
     case unsupportedCompressionMethod(UInt16)
-    /// CRC-32 mismatch after decompression.
-    case checksumMismatch(path: String, expected: UInt32, actual: UInt32)
-    /// Deflated data could not be decompressed.
-    case deflateError(String)
-    /// The archive is truncated or corrupted.
-    case truncatedArchive
+    /// A CRC-32 check failed.
+    ///
+    /// `path` names the ZIP entry that failed, and is `nil` for gzip and zlib, which
+    /// carry a checksum without a path to attach it to.
+    case checksumMismatch(path: String?, expected: UInt32, actual: UInt32)
+    /// The DEFLATE engine refused the data, or failed to start.
+    case decompressionFailed(String)
 }

@@ -12,8 +12,9 @@ beyond zlib for the compression itself:
 - **gzip** — the single-stream format, via ``GzipMember``. A gzip file is not a ZIP
   file; it is one DEFLATE stream between an RFC 1952 header and trailer.
 
-Every read path is total: malformed, truncated, or hostile input returns a
-``ZIPError`` or a ``GzipMember/Failure``, and never traps.
+Every read path is total: malformed, truncated, or hostile input throws a
+``ZIPError`` and never traps. One vocabulary covers all three containers — which one
+failed is told by the call you made, not by the error.
 
 ### Reading an archive
 
