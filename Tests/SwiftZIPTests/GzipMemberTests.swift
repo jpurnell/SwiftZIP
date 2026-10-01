@@ -11,7 +11,7 @@ private func scratchDirectory() throws -> URL {
     let root = FileManager.default.temporaryDirectory.standardizedFileURL
     let candidate = root.appendingPathComponent("swiftzip-\(UUID().uuidString)")
         .standardizedFileURL
-    guard candidate.path.hasPrefix(root.path),
+    guard candidate.pathComponents.starts(with: root.pathComponents),
           !candidate.pathComponents.contains("..") else {
         throw ScratchFailure.unsafePath
     }
