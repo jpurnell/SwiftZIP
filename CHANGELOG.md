@@ -4,6 +4,12 @@ All notable changes to SwiftZIP will be documented in this file.
 
 ## [Unreleased]
 
+### Changed
+
+- A test fixture's temp-directory containment check compares path components instead of a
+  string prefix, ahead of the quality gate reporting a bare prefix as an error.
+
+
 ## [0.7.0] - 2026-09-19
 
 ### Changed
