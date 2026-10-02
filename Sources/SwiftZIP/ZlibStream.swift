@@ -34,12 +34,23 @@ public enum ZlibStream: Sendable {
 
     /// Inflates a zlib-wrapped stream whose output size is unknown.
     ///
-    /// - Parameter data: The complete compressed stream.
+    /// Nothing in a zlib stream declares its output size, so the ceiling is enforced on
+    /// the bytes actually produced: inflation stops one byte past `limit`, and a
+    /// decompression bomb costs at most that much memory.
+    ///
+    /// - Parameters:
+    ///   - data: The complete compressed stream.
+    ///   - limit: The largest inflated size accepted, in bytes. Defaults to
+    ///     ``ZIPLimits/defaultMaxEntryUncompressedSize`` (1 GiB).
     /// - Returns: The inflated bytes.
-    /// - Throws: ``ZIPError`` when the header is wrong, the stream is truncated, or zlib
-    ///   rejects the data — which includes a failed Adler-32, so silent corruption is
-    ///   reported rather than returned.
-    public static func inflate(_ data: Data) throws -> Data {
+    /// - Throws: ``ZIPError/limitExceeded(_:value:maximum:)`` when the output would pass
+    ///   `limit`, and ``ZIPError`` when the header is wrong, the stream is truncated, or
+    ///   zlib rejects the data — which includes a failed Adler-32, so silent corruption
+    ///   is reported rather than returned.
+    public static func inflate(
+        _ data: Data,
+        limit: UInt64 = ZIPLimits.defaultMaxEntryUncompressedSize
+    ) throws -> Data {
         guard data.count >= 2 else { throw ZIPError.truncated }
         guard isZlib(data) else { throw ZIPError.invalidSignature }
 
@@ -55,23 +66,33 @@ public enum ZlibStream: Sendable {
         var chunk = [UInt8](repeating: 0, count: chunkSize)
         var source = [UInt8](data)
         var status: Int32 = Z_OK
+        // zlib counts input in 32-bit `uInt`; a larger buffer is refused, not truncated
+        // into a trap by `uInt(_:)`.
+        guard let availableIn = uInt(exactly: source.count) else {
+            throw ZIPError.decompressionFailed("input of \(source.count) bytes exceeds one zlib call")
+        }
 
         try source.withUnsafeMutableBufferPointer { input in
             stream.next_in = input.baseAddress
-            stream.avail_in = uInt(input.count)
+            stream.avail_in = availableIn
 
             repeat {
+                let window = outputWindow(produced: output.count, limit: limit)
                 let produced: Int = chunk.withUnsafeMutableBufferPointer { out -> Int in
                     stream.next_out = out.baseAddress
-                    stream.avail_out = uInt(out.count)
+                    stream.avail_out = uInt(window)
                     status = CZlib.inflate(&stream, Z_NO_FLUSH)
-                    return out.count - Int(stream.avail_out)
+                    return window - Int(stream.avail_out)
                 }
 
                 guard status == Z_OK || status == Z_STREAM_END || status == Z_BUF_ERROR else {
                     throw ZIPError.decompressionFailed("zlib inflate failed: \(status)")
                 }
                 if produced > 0 { output.append(contentsOf: chunk[0..<produced]) }
+                guard UInt64(output.count) <= limit else {
+                    throw ZIPError.limitExceeded(.entryUncompressedSize,
+                                                 value: UInt64(output.count), maximum: limit)
+                }
 
                 // Z_BUF_ERROR with nothing produced and nothing left to read means zlib
                 // wants more input that will never arrive: the stream is truncated.
@@ -83,6 +104,21 @@ public enum ZlibStream: Sendable {
 
         guard status == Z_STREAM_END else { throw ZIPError.truncated }
         return output
+    }
+
+    /// How many bytes the next pass may produce.
+    ///
+    /// A full chunk while the limit is far off; near it, exactly one byte more than the
+    /// limit allows, so crossing it is detected without inflating any further.
+    ///
+    /// - Parameters:
+    ///   - produced: Bytes inflated so far, never more than `limit`.
+    ///   - limit: The caller's ceiling.
+    /// - Returns: A window size in `1...chunkSize`.
+    private static func outputWindow(produced: Int, limit: UInt64) -> Int {
+        let room = limit - UInt64(produced)
+        guard let roomInt = Int(exactly: room) else { return chunkSize }
+        return min(roomInt, chunkSize - 1) + 1
     }
 
     /// Bytes inflated per pass.

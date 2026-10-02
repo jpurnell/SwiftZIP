@@ -11,6 +11,24 @@ import CZlib
 /// (fixed at level 5). When a specific level is requested, zlib is called
 /// directly to honor the level parameter.
 enum Deflate: Sendable {
+    /// DEFLATE's maximum expansion: no stream inflates to more than 1032 times its size.
+    ///
+    /// The longest match is 258 bytes, and the cheapest way to encode one costs a little
+    /// over two bits, so a byte of input can never yield more than 1032 bytes of output.
+    /// zlib's own documentation states this bound ("Technical Details": "the limit is
+    /// 1032:1"). It needs no tuning: it is a property of the format, not a policy.
+    static let maxExpansionRatio: UInt64 = 1032
+
+    /// Whether `compressedSize` bytes of DEFLATE could possibly inflate to
+    /// `uncompressedSize` bytes.
+    ///
+    /// A declaration that fails this is a lie, and is refused before it is allocated.
+    static func canExpand(_ compressedSize: UInt64, to uncompressedSize: UInt64) -> Bool {
+        let (bound, overflow) = compressedSize.multipliedReportingOverflow(by: maxExpansionRatio)
+        // An overflowing bound exceeds every UInt64, so any declared size is reachable.
+        return overflow || uncompressedSize <= bound
+    }
+
     /// Decompresses raw-deflate data as used in ZIP archives.
     ///
     /// - Parameters:
@@ -156,17 +174,25 @@ enum Deflate: Sendable {
             throw ZIPError.decompressionFailed("zlib inflateInit2 failed: \(initResult)")
         }
 
+        // zlib counts bytes in 32-bit `uInt`; sizes beyond that are refused rather than
+        // trapped on by `uInt(_:)`.
+        guard let availableIn = uInt(exactly: data.count),
+              let availableOut = uInt(exactly: uncompressedSize) else {
+            inflateEnd(&stream)
+            throw ZIPError.decompressionFailed("entry exceeds what one zlib call can address")
+        }
+
         var destBuffer = [UInt8](repeating: 0, count: uncompressedSize)
         var srcCopy = [UInt8](data)
 
         srcCopy.withUnsafeMutableBufferPointer { srcBuf in
             stream.next_in = srcBuf.baseAddress
-            stream.avail_in = uInt(srcBuf.count)
+            stream.avail_in = availableIn
         }
 
         destBuffer.withUnsafeMutableBufferPointer { dstBuf in
             stream.next_out = dstBuf.baseAddress
-            stream.avail_out = uInt(dstBuf.count)
+            stream.avail_out = availableOut
         }
 
         let result = CZlib.inflate(&stream, Z_FINISH)

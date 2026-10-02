@@ -16,12 +16,14 @@ the default.
   DEFLATE stream, with the trailing CRC-32 verified
 - Reads zlib-wrapped streams (RFC 1950) of unknown output size, with Adler-32 verified
 - Unicode path support (accented, CJK, emoji characters)
+- Safe on untrusted input: declared sizes are checked before allocation, and configurable
+  limits stop decompression bombs (see [Reading untrusted input](#reading-untrusted-input))
 - Swift 6 strict concurrency compliance (all types Sendable)
 
 ## Requirements
 
-- Swift 6.0+
-- macOS 14+ / iOS 17+
+- Swift 6.2+ (swift-tools-version 6.2)
+- macOS 14+ / iOS 17+ / watchOS 10+ / visionOS 1+
 
 ## Installation
 
@@ -29,7 +31,7 @@ Add SwiftZIP to your `Package.swift`:
 
 ```swift
 dependencies: [
-    .package(url: "https://github.com/jpurnell/SwiftZIP.git", from: "0.7.0"),
+    .package(url: "https://github.com/jpurnell/SwiftZIP.git", from: "0.8.0"),
 ]
 ```
 
@@ -91,6 +93,43 @@ let bytes = try GzipMember.read(contentsOf: url)
 // Or decompress in memory, with the trailing CRC-32 checked
 let out = try GzipMember.decompress(gzData)
 ```
+
+### Reading untrusted input
+
+Every read path treats its input as hostile. The guarantee:
+
+- **An untrusted archive, gzip member, or zlib stream cannot trap the process.** Every
+  size, count, and offset read from the input is converted with `Int(exactly:)`, and every
+  offset-plus-length is overflow-checked. Anything that does not fit throws a `ZIPError`.
+- **It cannot make the reader allocate beyond the limits.** Declared sizes are checked
+  *before* any buffer is allocated — against what the format makes possible (a stored
+  entry's two sizes must agree; DEFLATE cannot expand past 1032:1) and against `ZIPLimits`.
+  A zlib stream declares no size, so its output is cut off one byte past the limit.
+
+| Limit | Default | Error when crossed |
+|---|---|---|
+| `maxEntryUncompressedSize` | 1 GiB | `.limitExceeded(.entryUncompressedSize, value:maximum:)` |
+| `maxTotalUncompressedSize` | 4 GiB | `.limitExceeded(.totalUncompressedSize, value:maximum:)` |
+| `maxEntryCount` | 65,536 | `.limitExceeded(.entryCount, value:maximum:)` |
+
+The defaults are far above any document, spreadsheet, or firmware package, and far below
+what a decompression bomb would demand. Callers with smaller payloads should say so:
+
+```swift
+let limits = ZIPLimits(maxEntryUncompressedSize: 16 << 20,   // 16 MiB
+                       maxTotalUncompressedSize: 64 << 20,
+                       maxEntryCount: 64)
+let entries = try ZIPReader.read(from: downloadedData, limits: limits)
+
+let gz = try GzipMember.decompress(gzData, limit: 16 << 20)
+let raw = try ZlibStream.inflate(zlibData, limit: 16 << 20)
+```
+
+Every existing call compiles unchanged and gets `ZIPLimits.default`.
+
+Limits bound memory and CPU, not paths: `ZIPEntry.path` is returned exactly as the
+archive spells it, so a caller writing entries to disk must still reject absolute paths
+and `..` components itself.
 
 ## Limitations
 

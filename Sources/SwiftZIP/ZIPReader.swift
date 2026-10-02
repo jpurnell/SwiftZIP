@@ -44,6 +44,14 @@ public enum ZIPReader: Sendable {
     private static let eocdMinSize = 22
     /// Maximum distance to scan backwards for EOCD (22 + max comment of 65535).
     private static let eocdMaxScanDistance = 65557
+    /// Size of a central directory record before its variable-length fields.
+    private static let centralRecordMinSize = 46
+    /// Size of a local file header before its variable-length fields.
+    private static let localHeaderMinSize = 30
+    /// Size of the ZIP64 End of Central Directory record without extensible data.
+    private static let zip64EOCDMinSize = 56
+    /// Size of the ZIP64 End of Central Directory locator.
+    private static let zip64LocatorSize = 20
 
     // MARK: - Internal Types
 
@@ -72,21 +80,33 @@ public enum ZIPReader: Sendable {
     /// Reads all entries from a ZIP archive at the given URL.
     ///
     /// Supports stored (method 0) and deflated (method 8) entries.
-    /// - Parameter url: The ZIP file URL.
+    /// - Parameters:
+    ///   - url: The ZIP file URL.
+    ///   - limits: Ceilings on entry count and uncompressed sizes. See ``ZIPLimits``.
     /// - Returns: All entries with their decompressed data.
-    /// - Throws: ``ZIPError`` if the archive is malformed or uses unsupported features.
-    public static func read(from url: URL) throws -> [ZIPEntry] {
+    /// - Throws: ``ZIPError`` if the archive is malformed or uses unsupported features,
+    ///   and ``ZIPError/limitExceeded(_:value:maximum:)`` if it would cross `limits`.
+    public static func read(from url: URL, limits: ZIPLimits = .default) throws -> [ZIPEntry] {
         let data = try Data(contentsOf: url)
-        return try read(from: data)
+        return try read(from: data, limits: limits)
     }
 
     /// Reads all entries from ZIP data in memory.
     ///
-    /// - Parameter data: The raw ZIP archive bytes.
+    /// The archive is treated as untrusted. Its declared sizes are checked against
+    /// `limits`, and against what the format makes possible, before any entry is
+    /// decompressed or any output allocated; no size or offset it declares can trap.
+    ///
+    /// - Parameters:
+    ///   - data: The raw ZIP archive bytes. A slice of a larger buffer is accepted.
+    ///   - limits: Ceilings on entry count, per-entry and total uncompressed size.
     /// - Returns: All entries with their decompressed data.
-    /// - Throws: ``ZIPError`` if the archive is malformed or uses unsupported features.
-    public static func read(from data: Data) throws -> [ZIPEntry] {
-        let records = try parseCentralDirectory(from: data)
+    /// - Throws: ``ZIPError`` if the archive is malformed or uses unsupported features,
+    ///   and ``ZIPError/limitExceeded(_:value:maximum:)`` if it would cross `limits`.
+    public static func read(from data: Data, limits: ZIPLimits = .default) throws -> [ZIPEntry] {
+        let data = zeroBased(data)
+        let records = try parseCentralDirectory(from: data, limits: limits)
+        try validateDeclaredSizes(of: records, limits: limits)
         var entries: [ZIPEntry] = []
         entries.reserveCapacity(records.count)
 
@@ -100,32 +120,128 @@ public enum ZIPReader: Sendable {
 
     /// Reads a single entry by path from ZIP data.
     ///
+    /// Only the matching entry is decompressed, so only its size is held to the
+    /// per-entry and total limits; the entry count applies to the whole archive.
+    ///
     /// - Parameters:
     ///   - path: The entry path to search for.
-    ///   - data: The raw ZIP archive bytes.
+    ///   - data: The raw ZIP archive bytes. A slice of a larger buffer is accepted.
+    ///   - limits: Ceilings on entry count and uncompressed size. See ``ZIPLimits``.
     /// - Returns: The matching entry, or `nil` if the path is not found.
-    /// - Throws: ``ZIPError`` if the archive is malformed or uses unsupported features.
-    public static func readEntry(named path: String, from data: Data) throws -> ZIPEntry? {
-        let records = try parseCentralDirectory(from: data)
+    /// - Throws: ``ZIPError`` if the archive is malformed or uses unsupported features,
+    ///   and ``ZIPError/limitExceeded(_:value:maximum:)`` if it would cross `limits`.
+    public static func readEntry(
+        named path: String,
+        from data: Data,
+        limits: ZIPLimits = .default
+    ) throws -> ZIPEntry? {
+        let data = zeroBased(data)
+        let records = try parseCentralDirectory(from: data, limits: limits)
 
         guard let record = records.first(where: { $0.name == path }) else {
             return nil
         }
+        try validateDeclaredSizes(of: [record], limits: limits)
 
         return try extractEntry(record: record, from: data)
     }
 
     /// Lists all entry paths without decompressing data.
     ///
-    /// - Parameter data: The raw ZIP archive bytes.
+    /// Nothing is decompressed, so of `limits` only the entry count applies.
+    ///
+    /// - Parameters:
+    ///   - data: The raw ZIP archive bytes. A slice of a larger buffer is accepted.
+    ///   - limits: Ceilings applied while reading; only ``ZIPLimits/maxEntryCount`` matters here.
     /// - Returns: The paths of all entries in the archive, in order.
-    /// - Throws: ``ZIPError`` if the archive is malformed.
-    public static func listEntries(in data: Data) throws -> [String] {
-        let records = try parseCentralDirectory(from: data)
+    /// - Throws: ``ZIPError`` if the archive is malformed, and
+    ///   ``ZIPError/limitExceeded(_:value:maximum:)`` if it declares too many entries.
+    public static func listEntries(in data: Data, limits: ZIPLimits = .default) throws -> [String] {
+        let records = try parseCentralDirectory(from: zeroBased(data), limits: limits)
         return records.map(\.name)
     }
 
     // MARK: - Private Implementation
+
+    /// Rebases a slice so that offsets read from the archive index it directly.
+    ///
+    /// `Data` subscripts by absolute index, so a slice starting at 3 would read every
+    /// archive offset three bytes early — and past its end on the last field.
+    private static func zeroBased(_ data: Data) -> Data {
+        data.startIndex == 0 ? data : Data(data)
+    }
+
+    /// Converts a size, count, or offset read from the archive to `Int`.
+    ///
+    /// - Throws: ``ZIPError/malformedHeader`` when the value does not fit, rather than
+    ///   trapping as `Int(_:)` would on a value at or above 2^63 (2^31 on watchOS).
+    private static func intFromArchive<Value: BinaryInteger>(_ value: Value) throws -> Int {
+        guard let result = Int(exactly: value) else {
+            throw ZIPError.malformedHeader
+        }
+        return result
+    }
+
+    /// Returns `start + length`, for a range whose start and length the archive supplied.
+    ///
+    /// - Throws: ``ZIPError/truncated`` when the sum overflows: such a range certainly
+    ///   ends beyond the data.
+    private static func rangeEnd(start: Int, length: Int) throws -> Int {
+        let (end, overflow) = start.addingReportingOverflow(length)
+        guard !overflow else {
+            throw ZIPError.truncated
+        }
+        return end
+    }
+
+    /// Checks every record's declared sizes before anything is decompressed.
+    ///
+    /// The declared uncompressed size is what extraction allocates, so it is checked
+    /// here — against `limits` and against what the compression method can produce —
+    /// rather than discovered after the allocation has been made.
+    ///
+    /// - Throws: ``ZIPError/limitExceeded(_:value:maximum:)`` for a size over `limits`,
+    ///   ``ZIPError/malformedHeader`` for sizes the method makes impossible.
+    private static func validateDeclaredSizes(
+        of records: [CentralDirectoryRecord],
+        limits: ZIPLimits
+    ) throws {
+        var total: UInt64 = 0
+        for record in records {
+            guard record.uncompressedSize <= limits.maxEntryUncompressedSize else {
+                throw ZIPError.limitExceeded(
+                    .entryUncompressedSize,
+                    value: record.uncompressedSize,
+                    maximum: limits.maxEntryUncompressedSize
+                )
+            }
+
+            switch CompressionMethod(rawValue: record.compressionMethod) {
+            case .stored:
+                // Stored bytes are the entry: the two sizes cannot differ.
+                guard record.compressedSize == record.uncompressedSize else {
+                    throw ZIPError.malformedHeader
+                }
+            case .deflated:
+                guard Deflate.canExpand(record.compressedSize, to: record.uncompressedSize) else {
+                    throw ZIPError.malformedHeader
+                }
+            case nil:
+                // Reported as unsupported when the entry is extracted.
+                break
+            }
+
+            let (sum, overflow) = total.addingReportingOverflow(record.uncompressedSize)
+            guard !overflow, sum <= limits.maxTotalUncompressedSize else {
+                throw ZIPError.limitExceeded(
+                    .totalUncompressedSize,
+                    value: overflow ? UInt64.max : sum,
+                    maximum: limits.maxTotalUncompressedSize
+                )
+            }
+            total = sum
+        }
+    }
 
     /// Locates the End of Central Directory record by scanning backwards.
     ///
@@ -154,34 +270,44 @@ public enum ZIPReader: Sendable {
 
     /// Parses the central directory to produce an array of records.
     ///
-    /// - Parameter data: The raw ZIP archive bytes.
+    /// - Parameters:
+    ///   - data: The raw ZIP archive bytes, zero-based.
+    ///   - limits: Supplies the entry-count ceiling, checked before records are reserved.
     /// - Returns: An array of central directory records in order.
     /// - Throws: ``ZIPError`` if the archive structure is invalid.
-    private static func parseCentralDirectory(from data: Data) throws -> [CentralDirectoryRecord] {
+    private static func parseCentralDirectory(
+        from data: Data,
+        limits: ZIPLimits
+    ) throws -> [CentralDirectoryRecord] {
         let eocdOffset = try findEOCD(in: data)
 
         guard eocdOffset + eocdMinSize <= data.count else {
             throw ZIPError.truncated
         }
 
-        var entryCount = Int(data.readUInt16(at: eocdOffset + 8))
-        var centralDirOffset = Int(data.readUInt32(at: eocdOffset + 16))
-
-        // Check for ZIP64 EOCD locator (20 bytes before the standard EOCD)
-        if eocdOffset >= 20 {
-            let locatorOffset = eocdOffset - 20
-            if data.readUInt32(at: locatorOffset) == zip64LocatorSignature {
-                let zip64EOCDOffset = Int(data.readUInt64(at: locatorOffset + 8))
-                if zip64EOCDOffset + 56 <= data.count,
-                   data.readUInt32(at: zip64EOCDOffset) == zip64EOCDSignature
-                {
-                    entryCount = Int(data.readUInt64(at: zip64EOCDOffset + 32))
-                    centralDirOffset = Int(data.readUInt64(at: zip64EOCDOffset + 48))
-                }
-            }
+        var declaredCount = UInt64(data.readUInt16(at: eocdOffset + 8))
+        var declaredOffset = UInt64(data.readUInt32(at: eocdOffset + 16))
+        if let zip64 = zip64Directory(in: data, eocdOffset: eocdOffset) {
+            declaredCount = zip64.entryCount
+            declaredOffset = zip64.centralDirectoryOffset
         }
 
-        guard centralDirOffset >= 0, centralDirOffset <= data.count else {
+        let entryCount = try intFromArchive(declaredCount)
+        guard entryCount <= limits.maxEntryCount else {
+            throw ZIPError.limitExceeded(
+                .entryCount,
+                value: declaredCount,
+                maximum: UInt64(clamping: limits.maxEntryCount)
+            )
+        }
+
+        let centralDirOffset = try intFromArchive(declaredOffset)
+        guard centralDirOffset <= data.count else {
+            throw ZIPError.truncated
+        }
+        // Every record takes at least 46 bytes, so a count the remaining bytes cannot
+        // hold is refused here, before memory is reserved for it.
+        guard entryCount <= (data.count - centralDirOffset) / centralRecordMinSize else {
             throw ZIPError.truncated
         }
 
@@ -190,7 +316,7 @@ public enum ZIPReader: Sendable {
         var cursor = centralDirOffset
 
         for _ in 0..<entryCount {
-            guard cursor + 46 <= data.count else {
+            guard cursor + centralRecordMinSize <= data.count else {
                 throw ZIPError.truncated
             }
 
@@ -212,7 +338,7 @@ public enum ZIPReader: Sendable {
             let externalAttributes = data.readUInt32(at: cursor + 38)
             var localHeaderOffset = UInt64(data.readUInt32(at: cursor + 42))
 
-            let nameStart = cursor + 46
+            let nameStart = cursor + centralRecordMinSize
             let nameEnd = nameStart + nameLength
             guard nameEnd <= data.count else {
                 throw ZIPError.truncated
@@ -258,6 +384,31 @@ public enum ZIPReader: Sendable {
         }
 
         return records
+    }
+
+    /// Reads the entry count and central directory offset from a ZIP64 EOCD record.
+    ///
+    /// - Returns: The record's fields, or `nil` when there is no ZIP64 locator directly
+    ///   before the standard EOCD, or it points somewhere that holds no ZIP64 record —
+    ///   including an offset too large to represent. The standard EOCD then stands.
+    private static func zip64Directory(
+        in data: Data,
+        eocdOffset: Int
+    ) -> (entryCount: UInt64, centralDirectoryOffset: UInt64)? {
+        guard eocdOffset >= zip64LocatorSize else { return nil }
+        let locatorOffset = eocdOffset - zip64LocatorSize
+        guard data.readUInt32(at: locatorOffset) == zip64LocatorSignature else { return nil }
+
+        guard let recordOffset = Int(exactly: data.readUInt64(at: locatorOffset + 8)),
+              recordOffset <= data.count - zip64EOCDMinSize,
+              data.readUInt32(at: recordOffset) == zip64EOCDSignature
+        else {
+            return nil
+        }
+        return (
+            entryCount: data.readUInt64(at: recordOffset + 32),
+            centralDirectoryOffset: data.readUInt64(at: recordOffset + 48)
+        )
     }
 
     /// Parses the ZIP64 extended information extra field (tag 0x0001).
@@ -341,9 +492,9 @@ public enum ZIPReader: Sendable {
         record: CentralDirectoryRecord,
         from data: Data
     ) throws -> ZIPEntry {
-        let localOffset = Int(record.localHeaderOffset)
+        let localOffset = try intFromArchive(record.localHeaderOffset)
 
-        guard localOffset + 30 <= data.count else {
+        guard try rangeEnd(start: localOffset, length: localHeaderMinSize) <= data.count else {
             throw ZIPError.truncated
         }
 
@@ -355,9 +506,10 @@ public enum ZIPReader: Sendable {
         let localNameLength = Int(data.readUInt16(at: localOffset + 26))
         let localExtraLength = Int(data.readUInt16(at: localOffset + 28))
 
-        let dataStart = localOffset + 30 + localNameLength + localExtraLength
-        let compressedSize = Int(record.compressedSize)
-        let dataEnd = dataStart + compressedSize
+        // Bounded: localOffset is within the data and the two lengths are 16-bit.
+        let dataStart = localOffset + localHeaderMinSize + localNameLength + localExtraLength
+        let compressedSize = try intFromArchive(record.compressedSize)
+        let dataEnd = try rangeEnd(start: dataStart, length: compressedSize)
 
         guard dataEnd <= data.count else {
             throw ZIPError.truncated
@@ -376,7 +528,7 @@ public enum ZIPReader: Sendable {
         case .deflated:
             decompressedData = try Deflate.decompress(
                 Data(compressedData),
-                uncompressedSize: Int(record.uncompressedSize)
+                uncompressedSize: try intFromArchive(record.uncompressedSize)
             )
         }
 
