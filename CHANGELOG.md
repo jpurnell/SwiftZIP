@@ -4,6 +4,21 @@ All notable changes to SwiftZIP will be documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+- **zlib buffers are used only while their pointers are valid.** `compressWithZlib` and
+  `decompressWithZlib` stored a buffer's `baseAddress` into `z_stream` inside
+  `withUnsafeMutableBufferPointer` and called `deflate`/`inflate` after the closure had
+  returned — undefined behaviour that worked only because the arrays did not move. The
+  zlib call now runs inside both closures, as `ZlibStream` already did. This path runs on
+  every platform when a compression level is given, and is the only inflate path on Linux.
+- `compressWithZlib` converts sizes with `Int(exactly:)` / `uInt(exactly:)` and calls
+  `deflateEnd` on every exit.
+
+### Added
+- `ZlibPathTests`: the zlib inflate path, previously reached only on Linux, now runs on
+  every platform — round trips at five size classes and every public level, agreement
+  with the platform inflate, and both wrong-declared-size errors.
+
 ## [0.8.0] - 2026-10-02
 
 Reading is now safe on untrusted input: no archive, gzip member, or zlib stream can trap

@@ -111,7 +111,13 @@ enum Deflate: Sendable {
     }
     #endif
 
-    private static func compressWithZlib(_ data: Data, level: Int32) throws -> Data {
+    /// Compresses with zlib directly: used for an explicit level on every platform, and for
+    /// every compression where the Compression framework is unavailable.
+    ///
+    /// zlib reads `next_in` and writes `next_out` during `deflate`, so the call is made inside
+    /// both `withUnsafeMutableBufferPointer` closures — a buffer's pointer is valid only while
+    /// its closure runs.
+    static func compressWithZlib(_ data: Data, level: Int32) throws -> Data {
         var stream = z_stream()
         let initResult = deflateInit2_(
             &stream,
@@ -126,41 +132,43 @@ enum Deflate: Sendable {
         guard initResult == Z_OK else {
             throw ZIPError.decompressionFailed("zlib deflateInit2 failed: \(initResult)")
         }
+        defer { deflateEnd(&stream) }
 
-        let destCapacity = Int(deflateBound(&stream, UInt(data.count)))
+        // zlib counts bytes in 32-bit `uInt`; larger buffers are refused, not trapped on.
+        guard let sourceLength = UInt(exactly: data.count),
+              let availableIn = uInt(exactly: data.count),
+              let destCapacity = Int(exactly: deflateBound(&stream, sourceLength)),
+              let availableOut = uInt(exactly: destCapacity) else {
+            throw ZIPError.decompressionFailed("input of \(data.count) bytes exceeds one zlib call")
+        }
+
         var destBuffer = [UInt8](repeating: 0, count: destCapacity)
-        let srcBytes = [UInt8](data)
+        var source = [UInt8](data)
 
-        var srcCopy = srcBytes
-        srcCopy.withUnsafeMutableBufferPointer { srcBuf in
-            stream.next_in = srcBuf.baseAddress
-            stream.avail_in = uInt(srcBuf.count)
-        }
-
-        let compressedSize: Int
-        do {
-            destBuffer.withUnsafeMutableBufferPointer { dstBuf in
-                stream.next_out = dstBuf.baseAddress
-                stream.avail_out = uInt(dstBuf.count)
+        let result: Int32 = source.withUnsafeMutableBufferPointer { input in
+            destBuffer.withUnsafeMutableBufferPointer { output in
+                stream.next_in = input.baseAddress
+                stream.avail_in = availableIn
+                stream.next_out = output.baseAddress
+                stream.avail_out = availableOut
+                return CZlib.deflate(&stream, Z_FINISH)
             }
-
-            let result = CZlib.deflate(&stream, Z_FINISH)
-            compressedSize = Int(stream.total_out)
-            deflateEnd(&stream)
-
-            guard result == Z_STREAM_END else {
-                // compressedSize will be checked below but we need to handle the error path
-                throw ZIPError.decompressionFailed("zlib deflate failed: \(result)")
-            }
-        } catch {
-            throw error
         }
-
+        guard result == Z_STREAM_END else {
+            throw ZIPError.decompressionFailed("zlib deflate failed: \(result)")
+        }
+        guard let compressedSize = Int(exactly: stream.total_out), compressedSize <= destCapacity else {
+            throw ZIPError.decompressionFailed("zlib reported \(stream.total_out) bytes of output")
+        }
         return Data(destBuffer[0..<compressedSize])
     }
 
+    /// Inflates with zlib directly: the only inflate path where the Compression framework is
+    /// unavailable (Linux). Internal so the tests run it on every platform.
+    ///
+    /// As in ``compressWithZlib(_:level:)``, `inflate` is called inside both buffer closures.
     // LIVE: used on non-Apple platforms where Compression framework is unavailable
-    private static func decompressWithZlib(
+    static func decompressWithZlib(
         _ data: Data, uncompressedSize: Int
     ) throws -> Data {
         var stream = z_stream()
@@ -173,39 +181,34 @@ enum Deflate: Sendable {
         guard initResult == Z_OK else {
             throw ZIPError.decompressionFailed("zlib inflateInit2 failed: \(initResult)")
         }
+        defer { inflateEnd(&stream) }
 
         // zlib counts bytes in 32-bit `uInt`; sizes beyond that are refused rather than
         // trapped on by `uInt(_:)`.
         guard let availableIn = uInt(exactly: data.count),
               let availableOut = uInt(exactly: uncompressedSize) else {
-            inflateEnd(&stream)
             throw ZIPError.decompressionFailed("entry exceeds what one zlib call can address")
         }
 
         var destBuffer = [UInt8](repeating: 0, count: uncompressedSize)
-        var srcCopy = [UInt8](data)
+        var source = [UInt8](data)
 
-        srcCopy.withUnsafeMutableBufferPointer { srcBuf in
-            stream.next_in = srcBuf.baseAddress
-            stream.avail_in = availableIn
+        let result: Int32 = source.withUnsafeMutableBufferPointer { input in
+            destBuffer.withUnsafeMutableBufferPointer { output in
+                stream.next_in = input.baseAddress
+                stream.avail_in = availableIn
+                stream.next_out = output.baseAddress
+                stream.avail_out = availableOut
+                return CZlib.inflate(&stream, Z_FINISH)
+            }
         }
-
-        destBuffer.withUnsafeMutableBufferPointer { dstBuf in
-            stream.next_out = dstBuf.baseAddress
-            stream.avail_out = availableOut
-        }
-
-        let result = CZlib.inflate(&stream, Z_FINISH)
-        let decodedSize = Int(stream.total_out)
-        inflateEnd(&stream)
-
         guard result == Z_STREAM_END else {
             throw ZIPError.decompressionFailed("zlib inflate failed: \(result)")
         }
 
-        guard decodedSize == uncompressedSize else {
+        guard let decodedSize = Int(exactly: stream.total_out), decodedSize == uncompressedSize else {
             throw ZIPError.decompressionFailed(
-                "Decompression produced \(decodedSize) bytes, expected \(uncompressedSize)"
+                "Decompression produced \(stream.total_out) bytes, expected \(uncompressedSize)"
             )
         }
         return Data(destBuffer[0..<decodedSize])
