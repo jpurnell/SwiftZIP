@@ -198,7 +198,7 @@ public enum ZIPError: Error, Equatable, Sendable {
       declared sizes, `ZIPLimits` ceilings on ZIP, gzip and zlib reads
 - [x] watchOS 10 and visionOS 1 declared in `platforms:` (0.8.0), verified by
       `xcodebuild` for generic watchOS (arm64 and arm64_32) and visionOS
-- [x] 163 tests passing
+- [x] 168 tests passing
 
 ### Library Status: v0.8.0 shipped (untrusted input)
 
@@ -324,7 +324,9 @@ definition of 1.0 rather than a wishlist beside it; see **The road to 1.0** abov
 
 ---
 
-**Last Updated:** 2026-10-02 -- 0.8.0 tagged after PR #2 merged (status heading and CHANGELOG
+**Last Updated:** 2026-10-02 -- zlib pointer lifetimes fixed (Unreleased): the zlib calls in
+`Deflate` now run inside the buffer closures, the Linux inflate path is tested on every
+platform, and the test count is 168. Earlier the same day: 0.8.0 tagged after PR #2 merged (status heading and CHANGELOG
 date reconciled). Untrusted-input hardening: Added `ZIPLimits` and `ZIPError.limitExceeded` to the Public API
 block, Core Architectural Decision 9, Phase 6½, the new source and test files, the
 watchOS/visionOS platforms, and the test count (163). The 144 recorded earlier had
