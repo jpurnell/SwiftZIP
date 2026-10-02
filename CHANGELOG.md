@@ -4,7 +4,7 @@ All notable changes to SwiftZIP will be documented in this file.
 
 ## [Unreleased]
 
-## [0.8.0] - Unreleased
+## [0.8.0] - 2026-10-02
 
 Reading is now safe on untrusted input: no archive, gzip member, or zlib stream can trap
 the process, and none can make the reader allocate beyond the caller's limits.
@@ -171,8 +171,8 @@ the process, and none can make the reader allocate beyond the caller's limits.
 - 88 tests covering round-trip, real-world OOXML, edge cases
 - Swift 6 strict concurrency compliance (all types Sendable)
 
-[Unreleased]: https://github.com/jpurnell/SwiftZIP/compare/0.7.0...HEAD
-[0.8.0]: https://github.com/jpurnell/SwiftZIP/compare/0.7.0...HEAD
+[Unreleased]: https://github.com/jpurnell/SwiftZIP/compare/0.8.0...HEAD
+[0.8.0]: https://github.com/jpurnell/SwiftZIP/compare/0.7.0...0.8.0
 [0.7.0]: https://github.com/jpurnell/SwiftZIP/compare/0.6.0...0.7.0
 [0.6.0]: https://github.com/jpurnell/SwiftZIP/compare/0.3.0...0.6.0
 [0.3.0]: https://github.com/jpurnell/SwiftZIP/releases/tag/0.3.0

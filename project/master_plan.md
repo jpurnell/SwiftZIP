@@ -200,7 +200,7 @@ public enum ZIPError: Error, Equatable, Sendable {
       `xcodebuild` for generic watchOS (arm64 and arm64_32) and visionOS
 - [x] 163 tests passing
 
-### Library Status: v0.7.0 shipped (one error vocabulary)
+### Library Status: v0.8.0 shipped (untrusted input)
 
 The library handles the complete read/write cycle for ZIP archives with stored and
 Deflated entries, including ZIP64. It is the ZIP backend for SwiftXLSX, and now also
@@ -324,8 +324,8 @@ definition of 1.0 rather than a wishlist beside it; see **The road to 1.0** abov
 
 ---
 
-**Last Updated:** 2026-10-02 -- untrusted-input hardening on `fix/untrusted-sizes`, ahead
-of 0.8.0 (not yet tagged). Added `ZIPLimits` and `ZIPError.limitExceeded` to the Public API
+**Last Updated:** 2026-10-02 -- 0.8.0 tagged after PR #2 merged (status heading and CHANGELOG
+date reconciled). Untrusted-input hardening: Added `ZIPLimits` and `ZIPError.limitExceeded` to the Public API
 block, Core Architectural Decision 9, Phase 6½, the new source and test files, the
 watchOS/visionOS platforms, and the test count (163). The 144 recorded earlier had
 already drifted before this change.
