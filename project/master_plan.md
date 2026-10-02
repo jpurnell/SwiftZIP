@@ -200,7 +200,7 @@ public enum ZIPError: Error, Equatable, Sendable {
       `xcodebuild` for generic watchOS (arm64 and arm64_32) and visionOS
 - [x] 168 tests passing
 
-### Library Status: v0.8.0 shipped (untrusted input)
+### Library Status: v0.8.1 shipped (untrusted input; zlib pointer lifetimes)
 
 The library handles the complete read/write cycle for ZIP archives with stored and
 Deflated entries, including ZIP64. It is the ZIP backend for SwiftXLSX, and now also
@@ -324,7 +324,7 @@ definition of 1.0 rather than a wishlist beside it; see **The road to 1.0** abov
 
 ---
 
-**Last Updated:** 2026-10-02 -- zlib pointer lifetimes fixed (Unreleased): the zlib calls in
+**Last Updated:** 2026-10-02 -- zlib pointer lifetimes fixed and tagged 0.8.1 (PR #3): the zlib calls in
 `Deflate` now run inside the buffer closures, the Linux inflate path is tested on every
 platform, and the test count is 168. Earlier the same day: 0.8.0 tagged after PR #2 merged (status heading and CHANGELOG
 date reconciled). Untrusted-input hardening: Added `ZIPLimits` and `ZIPError.limitExceeded` to the Public API
