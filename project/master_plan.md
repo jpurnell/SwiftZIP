@@ -42,6 +42,7 @@ SwiftZIP/
 │   ├── ZIPWriter.swift          -- Create ZIP archives
 │   ├── ZIPReader.swift          -- Parse ZIP archives
 │   ├── ZIPError.swift           -- Structured errors
+│   ├── ZIPLimits.swift          -- Ceilings on untrusted input (0.8.0)
 │   ├── CompressionMethod.swift  -- .stored / .deflated
 │   ├── GzipMember.swift         -- Read RFC 1952 gzip members (header + DEFLATE + CRC-32)
 │   ├── ZlibStream.swift         -- Read RFC 1950 zlib streams of unknown output size
@@ -62,6 +63,7 @@ SwiftZIP/
 │   ├── RealWorldTests.swift
 │   ├── ZlibStreamTests.swift
 │   ├── ZIP64Tests.swift
+│   ├── UntrustedInputTests.swift -- hand-built hostile archives, gzip and zlib (0.8.0)
 │   └── Fixtures/gzip/, Fixtures/zlib/           -- gzip members produced by the system gzip, committed
 └── Package.swift
 ```
@@ -94,22 +96,39 @@ public enum ZIPWriter: Sendable {
 }
 
 public enum ZIPReader: Sendable {
-    public static func read(from url: URL) throws -> [ZIPEntry]
-    public static func read(from data: Data) throws -> [ZIPEntry]
-    public static func readEntry(named path: String, from data: Data) throws -> ZIPEntry?
-    public static func listEntries(in data: Data) throws -> [String]
+    public static func read(from url: URL, limits: ZIPLimits = .default) throws -> [ZIPEntry]
+    public static func read(from data: Data, limits: ZIPLimits = .default) throws -> [ZIPEntry]
+    public static func readEntry(named path: String, from data: Data,
+                                 limits: ZIPLimits = .default) throws -> ZIPEntry?
+    public static func listEntries(in data: Data, limits: ZIPLimits = .default) throws -> [String]
+}
+
+// ZIPLimits -- ceilings on untrusted input (0.8.0)
+public struct ZIPLimits: Sendable, Equatable {
+    public enum Limit: String, Sendable, Equatable {
+        case entryUncompressedSize, totalUncompressedSize, entryCount
+    }
+    public static let defaultMaxEntryUncompressedSize: UInt64   // 1 GiB
+    public static let defaultMaxTotalUncompressedSize: UInt64   // 4 GiB
+    public static let defaultMaxEntryCount: Int                 // 65,536
+    public var maxEntryUncompressedSize: UInt64
+    public var maxTotalUncompressedSize: UInt64
+    public var maxEntryCount: Int
+    public init(maxEntryUncompressedSize: UInt64 = ..., maxTotalUncompressedSize: UInt64 = ...,
+                maxEntryCount: Int = ...)
+    public static let `default`: ZIPLimits
 }
 
 // GzipMember / ZlibStream -- the other two containers over the same DEFLATE engine
-public enum GzipMember {
+public enum GzipMember: Sendable {
     public static func isGzip(_ data: Data) -> Bool
-    public static func decompress(_ data: Data) throws -> Data
-    public static func read(contentsOf url: URL) throws -> Data
+    public static func decompress(_ data: Data, limit: UInt64 = ZIPLimits.defaultMaxEntryUncompressedSize) throws -> Data
+    public static func read(contentsOf url: URL, limit: UInt64 = ZIPLimits.defaultMaxEntryUncompressedSize) throws -> Data
 }
 
 public enum ZlibStream: Sendable {
     public static func isZlib(_ data: Data) -> Bool
-    public static func inflate(_ data: Data) throws -> Data
+    public static func inflate(_ data: Data, limit: UInt64 = ZIPLimits.defaultMaxEntryUncompressedSize) throws -> Data
 }
 
 // ZIPError -- one vocabulary for all three containers (0.7.0)
@@ -121,6 +140,7 @@ public enum ZIPError: Error, Equatable, Sendable {
     case unsupportedCompressionMethod(UInt16)
     case checksumMismatch(path: String?, expected: UInt32, actual: UInt32)
     case decompressionFailed(String)
+    case limitExceeded(ZIPLimits.Limit, value: UInt64, maximum: UInt64)   // 0.8.0
 }
 ```
 
@@ -151,6 +171,7 @@ public enum ZIPError: Error, Equatable, Sendable {
 6. **No encryption.** Encrypted entries return `unsupportedCompressionMethod`. Documented limitation. Still true.
 7. **Data descriptor support.** Reader handles bit 3 flag (sizes stored after entry data).
 8. **One error vocabulary.** Every container throws `ZIPError`; which one failed is told by the call site, not carried in the error. See `plans/proposals/0002-UnifiedErrors.md`. Settled in 0.7.0 because 1.0 freezes it.
+9. **Input is untrusted (0.8.0).** Every size, count, and offset read from the input is converted with `Int(exactly:)` and range ends are overflow-checked, so no input can trap. Declared sizes are checked before allocation twice: against what the format allows (stored sizes must agree; DEFLATE cannot expand past 1032:1) and against caller-overridable `ZIPLimits`. Until 0.8.0 the reader trusted declared sizes, which was tolerable while every consumer read archives it had written itself, and stopped being tolerable when polar-ble-sdk proposed reading firmware fetched over the network.
 
 ---
 
@@ -173,7 +194,11 @@ public enum ZIPError: Error, Equatable, Sendable {
       `doc-comment-code` sit outside the default checker selection, so nothing
       compiled them and five examples were broken. Fixed and the full set enabled
       in 0.6.0
-- [x] 144 tests passing, quality gate 0 errors / 0 warnings across 45 of 45 checkers
+- [x] Untrusted-input hardening (0.8.0) -- checked integer conversion, plausibility of
+      declared sizes, `ZIPLimits` ceilings on ZIP, gzip and zlib reads
+- [x] watchOS 10 and visionOS 1 declared in `platforms:` (0.8.0), verified by
+      `xcodebuild` for generic watchOS (arm64 and arm64_32) and visionOS
+- [x] 163 tests passing
 
 ### Library Status: v0.7.0 shipped (one error vocabulary)
 
@@ -213,7 +238,7 @@ documented. Those are the Future Considerations below, and each is additive:
 |---|---|---|
 | Streaming reader | yes — new entry points beside `read(from:)` | the main gap; whole archive is held in memory |
 | Progress callback | yes — needs the same incremental path | belongs with streaming, not before it |
-| Linux support | yes — pure-Swift Deflate behind `#if !canImport(Compression)` | untested; `platforms:` declares macOS/iOS only |
+| Linux support | yes — pure-Swift Deflate behind `#if !canImport(Compression)` | untested; `platforms:` declares Apple platforms only (macOS, iOS, watchOS, visionOS since 0.8.0) |
 | Multi-member gzip | behaviour change, so before 1.0 | `GzipMember` reads the first member only |
 | Password-protected archives | yes | no consumer has asked |
 
@@ -271,6 +296,17 @@ it — the promise is semver, not a date.
 - [x] Loose `#expect(throws: (any Error).self)` in `ZlibStreamTests` tightened to named cases
 - [x] `plans/proposals/0002-UnifiedErrors.md` records the mapping and the reasoning
 
+### Phase 6½: Untrusted Input (0.8.0, unreleased)
+- [x] Every archive-supplied integer converted with `Int(exactly:)`; range ends overflow-checked
+- [x] Declared sizes checked for plausibility and against `ZIPLimits` before allocation
+- [x] `GzipMember` ISIZE capped and checked against the payload; `ZlibStream` output ceiling
+- [x] A `Data` slice reads correctly (previously misread every offset by its start index)
+- [x] watchOS 10 / visionOS 1 added to `platforms:` after building for both
+
+Not on the original roadmap at all: it was prompted by a consumer (polar-ble-sdk)
+replacing an unmaintained ZIP library over a path-traversal advisory, which made the
+question "what does a hostile archive cost us?" concrete.
+
 ### Phase 7: 1.0 — the items below, complete
 
 These were "Future Considerations" when the plan was written. They are now the
@@ -288,7 +324,13 @@ definition of 1.0 rather than a wishlist beside it; see **The road to 1.0** abov
 
 ---
 
-**Last Updated:** 2026-09-19 -- reconciled for the 0.7.0 release. Folded the three error
+**Last Updated:** 2026-10-02 -- untrusted-input hardening on `fix/untrusted-sizes`, ahead
+of 0.8.0 (not yet tagged). Added `ZIPLimits` and `ZIPError.limitExceeded` to the Public API
+block, Core Architectural Decision 9, Phase 6½, the new source and test files, the
+watchOS/visionOS platforms, and the test count (163). The 144 recorded earlier had
+already drifted before this change.
+
+*Previous entry, 2026-09-19:* reconciled for the 0.7.0 release. Folded the three error
 enums into one and recorded the decision as Core Architectural Decision 8. Corrected two
 decisions this plan had kept asserting after the code stopped agreeing: #4 still said the
 writer does not compress, and #5 still said "No ZIP64" with the note that 4 GB was

@@ -43,9 +43,37 @@ let entries = [ZIPEntry(path: "notes.txt", data: Data("hello".utf8))]
 let archive = try ZIPWriter.write(entries: entries)
 ```
 
+### Reading untrusted input
+
+An archive declares its own sizes, and a hostile one lies about them. Every size,
+count, and offset it declares is converted without trapping, and every declared size
+is checked before anything is allocated: against what the format makes possible, and
+against ``ZIPLimits`` — by default 1 GiB per entry, 4 GiB in total, and 65,536 entries.
+A caller that knows its payloads are small should say so:
+
+```swift
+import Foundation
+import SwiftZIP
+
+let downloaded = try ZIPWriter.write(entries: [
+    ZIPEntry(path: "firmware.bin", data: Data(repeating: 0xA5, count: 256))
+])
+let limits = ZIPLimits(maxEntryUncompressedSize: 16 << 20,
+                       maxTotalUncompressedSize: 64 << 20,
+                       maxEntryCount: 64)
+do {
+    let entries = try ZIPReader.read(from: downloaded, limits: limits)
+    print(entries.map(\.path))
+} catch ZIPError.limitExceeded(let limit, let value, let maximum) {
+    print("refused: \(limit.rawValue) \(value) > \(maximum)")
+}
+```
+
+``GzipMember`` and ``ZlibStream`` take the same ceiling as a `limit:` argument.
+
 ### Reading a gzip file
 
-``GzipMember/read(contentsOf:)`` accepts both compressed and plain files, so a
+``GzipMember/read(contentsOf:limit:)`` accepts both compressed and plain files, so a
 caller that may receive either does not have to branch:
 
 ```swift
@@ -70,9 +98,14 @@ decompressed bytes, so silent corruption is reported rather than returned.
 - ``ZIPWriter``
 - ``ZIPEntry``
 
-### Reading gzip
+### Reading gzip and zlib
 
 - ``GzipMember``
+- ``ZlibStream``
+
+### Untrusted input
+
+- ``ZIPLimits``
 
 ### Compression settings
 

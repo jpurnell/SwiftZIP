@@ -4,10 +4,47 @@ All notable changes to SwiftZIP will be documented in this file.
 
 ## [Unreleased]
 
-### Changed
+## [0.8.0] - Unreleased
 
+Reading is now safe on untrusted input: no archive, gzip member, or zlib stream can trap
+the process, and none can make the reader allocate beyond the caller's limits.
+
+### Added
+- `ZIPLimits`, a `Sendable` set of ceilings: `maxEntryUncompressedSize` (default 1 GiB),
+  `maxTotalUncompressedSize` (default 4 GiB), and `maxEntryCount` (default 65,536). The
+  sizes are `UInt64` so the defaults are expressible where `Int` is 32 bits (watchOS)
+- `limits:` parameters, defaulting to `ZIPLimits.default`, on `ZIPReader.read(from:)` (both
+  overloads), `readEntry(named:from:)` and `listEntries(in:)`; `limit:` parameters on
+  `GzipMember.decompress(_:)`, `GzipMember.read(contentsOf:)` and `ZlibStream.inflate(_:)`.
+  Existing calls compile unchanged
+- `ZIPError.limitExceeded(_:value:maximum:)`, naming the limit crossed and both values
+- watchOS 10 and visionOS 1 in `platforms:`, verified with `xcodebuild` for generic
+  watchOS (arm64 and arm64_32) and visionOS
+
+### Changed
+- **Breaking for exhaustive `switch`es over `ZIPError`**: the new `limitExceeded` case
+- Declared sizes are checked **before** allocation. A deflated entry declaring more than
+  DEFLATE's maximum expansion (1032:1) of its compressed size, or a stored entry whose
+  two sizes disagree, throws `.malformedHeader`. A size over the limits throws
+  `.limitExceeded`. Previously a ~100-byte archive could make the reader allocate 4 GiB
+- `GzipMember` checks its ISIZE trailer against the limit and against the payload before
+  using it as a buffer size. Previously a 20-byte member could request 4 GiB
+- `ZlibStream.inflate` stops one byte past its limit instead of inflating without bound
+- `GzipMember` is now declared `Sendable`
 - A test fixture's temp-directory containment check compares path components instead of a
   string prefix, ahead of the quality gate reporting a bare prefix as an error.
+
+### Fixed
+- ZIP64 sizes, offsets, and counts at or above 2^63 (2^31 on 32-bit watchOS), and 32-bit
+  fields on 32-bit platforms, trapped in `Int(_:)`. They now throw `.malformedHeader`;
+  offset-plus-length sums are overflow-checked and throw `.truncated`
+- A ZIP64 locator pointing past `Int.max` trapped on `offset + 56`; it is now ignored as
+  any other unusable locator is
+- A central directory entry count was reserved before it was checked, so a ZIP64 count
+  could request terabytes. The count is now limited, and must fit in the bytes present
+- Reading a `Data` slice (non-zero `startIndex`) misread every offset; slices are now
+  rebased before parsing
+- README claimed Swift 6.0+; the manifest has always declared swift-tools-version 6.2
 
 
 ## [0.7.0] - 2026-09-19
@@ -133,3 +170,11 @@ All notable changes to SwiftZIP will be documented in this file.
 - Unicode path support (accented, CJK, emoji)
 - 88 tests covering round-trip, real-world OOXML, edge cases
 - Swift 6 strict concurrency compliance (all types Sendable)
+
+[Unreleased]: https://github.com/jpurnell/SwiftZIP/compare/0.7.0...HEAD
+[0.8.0]: https://github.com/jpurnell/SwiftZIP/compare/0.7.0...HEAD
+[0.7.0]: https://github.com/jpurnell/SwiftZIP/compare/0.6.0...0.7.0
+[0.6.0]: https://github.com/jpurnell/SwiftZIP/compare/0.3.0...0.6.0
+[0.3.0]: https://github.com/jpurnell/SwiftZIP/releases/tag/0.3.0
+[0.2.0]: https://github.com/jpurnell/SwiftZIP/commit/ccf81a3
+[0.1.0]: https://github.com/jpurnell/SwiftZIP/commit/1c6209e

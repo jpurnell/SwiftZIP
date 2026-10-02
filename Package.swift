@@ -5,7 +5,7 @@ import PackageDescription
 
 let package = Package(
     name: "SwiftZIP",
-    platforms: [.macOS(.v14), .iOS(.v17)],
+    platforms: [.macOS(.v14), .iOS(.v17), .watchOS(.v10), .visionOS(.v1)],
     products: [
         .library(name: "SwiftZIP", targets: ["SwiftZIP"]),
     ],
